@@ -1,0 +1,19 @@
+[package]
+name = "simplecad"
+version = "1.0.0"
+edition = "2021"
+description = "SimpleCAD — Estúdio CAD 2D & 3D Offline para Plantas de Interiores"
+
+[dependencies]
+tao = "0.37.1"
+wry = "0.57.0"
+
+[build-dependencies]
+tauri-winres = "0.3.7"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

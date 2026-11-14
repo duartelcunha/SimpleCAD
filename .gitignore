@@ -1,0 +1,16 @@
+# Build & native artifacts
+native/target/
+*.exe
+*.msi
+*.pdb
+*.log
+
+# OS & editor files
+.DS_Store
+Thumbs.db
+Desktop.ini
+.vscode/
+
+# Personal user floorplan exports
+meu-quarto-*.json
+*-private*.json

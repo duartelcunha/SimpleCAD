@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d0e10" />
+  <meta name="description" content="SimpleCAD — Estúdio CAD 2D & 3D offline para plantas de interiores, mobiliário e cablagem." />
+  <title>SimpleCAD — Estúdio Demo (360×420 cm)</title>
+  <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+  <link rel="stylesheet" href="./styles.css?v=17" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- TOP HEADER & TOOLBAR -->
+    <header class="top-bar">
+      <div class="brand">
+        <svg class="brand-icon" aria-hidden="true" viewBox="0 0 128 128" fill="none">
+          <rect width="128" height="128" rx="26" fill="#0D0E10"/>
+          <rect x="1" y="1" width="126" height="126" rx="25" stroke="#22242A" stroke-width="1"/>
+          <polygon points="28,42 46,31 46,87 28,98" fill="#EDEAE4"/>
+          <polygon points="48,31 64,41 64,97 48,87" fill="#5D5B55"/>
+          <polygon points="66,41 82,31 82,87 66,97" fill="#EDEAE4"/>
+          <polygon points="84,31 100,41 100,97 84,87" fill="#C8A96E"/>
+        </svg>
+        <div class="brand-text">
+          <h1>SimpleCAD</h1>
+          <span id="room-size-badge" class="room-badge tabular">360×420 cm</span>
+        </div>
+      </div>
+
+      <div id="main-toolbar" class="toolbar-scroll" role="toolbar" focusgroup="toolbar wrap" aria-label="Ferramentas da planta" aria-controls="cadCanvas">
+        <!-- View Mode Segmented Control (2D / Cabos / 3D) -->
+        <div id="view-mode-group" class="view-segmented" role="group" aria-label="Modo de visualização">
+          <button id="btn-view-2d" type="button" class="view-seg-btn" aria-pressed="true" title="Vista Planta 2D (Tecla 1)">2D</button>
+          <button id="btn-view-cables" type="button" class="view-seg-btn" aria-pressed="false" aria-label="Vista de cabos e tomadas" title="Vista de Cabos e Tomadas (Tecla 2)">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg>
+          </button>
+          <button id="btn-view-3d" type="button" class="view-seg-btn" aria-pressed="false" title="Vista 3D Interativa — arrasta para rodar câmara (Tecla 3)">3D</button>
+        </div>
+
+        <button id="btn-top-add-item" type="button" class="tb-btn tb-btn-icon tb-btn-primary" aria-label="Adicionar novo móvel" title="Adicionar novo móvel (Tecla N)">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+
+        <span role="separator" aria-orientation="vertical" class="tb-sep"></span>
+
+        <!-- Layouts -->
+        <div class="tb-group" role="group" aria-label="Layouts do quarto">
+          <label for="layout-select" class="visually-hidden">Escolher layout</label>
+          <select id="layout-select" name="layout" class="tb-select" aria-label="Disposição do quarto" title="Trocar de disposição do quarto"></select>
+          <button id="btn-save-layout" type="button" class="tb-btn tb-btn-icon" aria-label="Guardar disposição atual como novo layout" title="Guardar disposição atual como novo layout">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          </button>
+          <button id="btn-delete-layout" type="button" class="tb-btn tb-btn-icon hidden" aria-label="Apagar layout personalizado" title="Apagar este layout">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+          </button>
+        </div>
+
+        <span role="separator" aria-orientation="vertical" class="tb-sep"></span>
+
+        <!-- History -->
+        <div class="tb-group" role="group" aria-label="Histórico">
+          <button id="btn-undo" type="button" class="tb-btn tb-btn-icon" aria-label="Desfazer (Ctrl+Z)" aria-disabled="true" title="Desfazer (Ctrl+Z)">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+          </button>
+          <button id="btn-redo" type="button" class="tb-btn tb-btn-icon" aria-label="Refazer (Ctrl+Y)" aria-disabled="true" title="Refazer (Ctrl+Y)">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>
+          </button>
+        </div>
+
+        <span role="separator" aria-orientation="vertical" class="tb-sep"></span>
+
+        <!-- Precision Tools -->
+        <div class="tb-group" role="group" aria-label="Precisão e medição">
+          <button id="btn-grid" type="button" class="tb-btn tb-btn-icon" aria-label="Alternar grelha magnética" aria-pressed="true" title="Grelha: 5cm (clica para alternar 5cm / 1cm / OFF)">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+          </button>
+          <button id="btn-snap" type="button" class="tb-btn tb-btn-icon" aria-label="Íman às paredes e móveis" aria-pressed="true" title="Ativar ou desligar íman às paredes e móveis">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v7a6 6 0 0 0 12 0V3"/><path d="M4 3h4M16 3h4M6 7h4M14 7h4"/></svg>
+          </button>
+          <button id="btn-measure" type="button" class="tb-btn tb-btn-icon" aria-pressed="false" aria-label="Medir distância com régua" title="Medir qualquer distância livremente (M)">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.3 8.7L8.7 21.3a1 1 0 0 1-1.4 0l-4.6-4.6a1 1 0 0 1 0-1.4L15.3 2.7a1 1 0 0 1 1.4 0l4.6 4.6a1 1 0 0 1 0 1.4z"/><path d="M7.5 10.5l2 2M10.5 7.5l2 2M13.5 4.5l2 2"/></svg>
+          </button>
+        </div>
+
+        <span role="separator" aria-orientation="vertical" class="tb-sep"></span>
+
+        <!-- Export / Files / Install -->
+        <div class="tb-group" role="group" aria-label="Ficheiros e exportação">
+          <button id="btn-open-json" type="button" class="tb-btn tb-btn-icon" aria-label="Guardar ou abrir ficheiro JSON" title="Guardar ou abrir ficheiro .JSON">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M10 13l-2 2 2 2M14 13l2 2-2 2"/></svg>
+          </button>
+          <button id="btn-export-png" type="button" class="tb-btn tb-btn-icon" aria-label="Descarregar imagem PNG" title="Descarregar imagem PNG de alta qualidade">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Live Primary Cable Badge -->
+      <div id="hdmi-readout" class="cable-pill tabular" title="Estado do cabo principal">
+        <span class="pill-dot" aria-hidden="true"></span>
+        <span id="hdmi-readout-text">HDMI: -- m</span>
+      </div>
+    </header>
+
+    <!-- Screen-reader live region outside toolbar -->
+    <p id="sr-status" role="status" class="visually-hidden"></p>
+
+    <!-- MAIN WORKSPACE -->
+    <div class="workspace">
+      <!-- 2D CAD VIEWPORT -->
+      <main id="viewport" class="viewport">
+        <canvas id="cadCanvas" aria-label="Planta interativa 2D do quarto"></canvas>
+
+        <!-- FLOATING CONTEXTUAL OBJECT HUD -->
+        <div id="object-hud" class="object-hud hidden" role="region" aria-label="Ações rápidas do objeto selecionado">
+          <div class="hud-top">
+            <div class="hud-identity">
+              <span id="hud-name" class="hud-name">Cama</span>
+              <span id="hud-dims" class="hud-dims tabular">210×140×45 cm • 0°</span>
+            </div>
+            <div class="hud-actions">
+              <button type="button" id="hud-rot-ccw" class="hud-btn hud-btn-icon" aria-label="Rodar 90 graus para a esquerda" title="Rodar -90°">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+              </button>
+              <button type="button" id="hud-rot-cw" class="hud-btn hud-btn-icon" aria-label="Rodar 90 graus para a direita" title="Rodar +90° (Tecla R)">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+              </button>
+              <button type="button" id="hud-rot-45" class="hud-btn hud-btn-icon" aria-label="Rodar 45 graus" title="Rodar 45° (Shift+R)">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 19H5V3"/><path d="M16 19a11 11 0 0 0-7.78-10.5"/><path d="M5 19L19 5"/></svg>
+              </button>
+              <span class="hud-sep" aria-hidden="true"></span>
+              <button type="button" id="hud-wall-snap" class="hud-btn hud-btn-icon" aria-label="Encostar à parede mais próxima" title="Encostar à parede mais próxima (Tecla W)">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3v18"/><rect x="14" y="6" width="6" height="12" rx="1"/><path d="M12 12H7m0 0l2.5-2.5M7 12l2.5 2.5"/></svg>
+              </button>
+              <button type="button" id="hud-center" class="hud-btn hud-btn-icon" aria-label="Centrar no espaço livre ou quarto" title="Centrar no espaço livre ou quarto e arredondar ao cm (Tecla C / Shift+C)">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+              </button>
+              <button type="button" id="hud-lock" class="hud-btn hud-btn-icon" aria-pressed="false" aria-label="Trancar medidas" title="Trancar medidas para não alterar tamanho sem querer (Tecla L)">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              </button>
+              <span class="hud-sep" aria-hidden="true"></span>
+              <button type="button" id="hud-edit" class="hud-btn hud-btn-icon" aria-label="Editar móvel" title="Editar nome, cor e medidas (Tecla E)">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              </button>
+              <button type="button" id="hud-dup" class="hud-btn hud-btn-icon" aria-label="Duplicar móvel" title="Duplicar móvel (Ctrl+D)">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              </button>
+              <button type="button" id="hud-hide" class="hud-btn hud-btn-icon" aria-label="Esconder ou mostrar móvel" title="Esconder/Mostrar móvel (Tecla H)">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+              <button type="button" id="hud-del" class="hud-btn hud-btn-icon hud-btn-danger" aria-label="Apagar móvel" title="Apagar móvel (Del)">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Toast Feedback -->
+        <div id="toast" class="toast hidden" aria-hidden="true"></div>
+
+        <!-- Subtle 3D Orbit Hint -->
+        <div id="view-3d-hint" class="view-3d-hint hidden" aria-hidden="true">Arrastar: rodar · Scroll: zoom</div>
+
+        <!-- Bottom-left technical readout -->
+        <div class="bottom-readout tabular">
+          <span id="cursor-coords">X: 0 cm | Y: 0 cm</span>
+          <span id="status-sep" class="sep hidden" aria-hidden="true">|</span>
+          <span id="status-msg" class="status-text hidden"></span>
+        </div>
+
+        <!-- Bottom-right zoom controls -->
+        <div class="zoom-controls">
+          <button id="btn-zoom-out" type="button" class="zoom-btn" aria-label="Diminuir zoom" title="Afastar (-)">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"/></svg>
+          </button>
+          <button id="zoom-label" type="button" class="zoom-btn zoom-fit tabular" aria-label="Ajustar quarto ao ecrã" title="Ajustar quarto ao ecrã">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+          </button>
+          <button id="btn-zoom-in" type="button" class="zoom-btn" aria-label="Aumentar zoom" title="Aproximar (+)">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+        </div>
+
+        <!-- Mobile Quick Action Floating Bar -->
+        <div class="mobile-quick-bar">
+          <button id="btn-mobile-add" type="button" class="mob-pill mob-pill-primary" aria-label="Adicionar móvel" title="Adicionar móvel">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <button id="btn-mobile-sheet" type="button" class="mob-pill" aria-expanded="false" aria-label="Abrir ou fechar painel" title="Painel de controlos">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+          </button>
+        </div>
+      </main>
+
+      <!-- SIDEBAR / MOBILE BOTTOM SHEET -->
+      <aside id="sidebar" class="sidebar" aria-label="Controlos do quarto e mobiliário">
+        <!-- Mobile Drawer Handle -->
+        <button id="btn-sheet-toggle" type="button" class="sheet-handle" aria-label="Expandir ou recolher painel">
+          <span class="handle-bar" aria-hidden="true"></span>
+          <span class="handle-label">Móveis • Cabos • Quarto</span>
+        </button>
+
+        <!-- Persistent Collision Alert Strip (only visible when collisions exist) -->
+        <section id="collision-strip" class="collision-strip hidden" aria-label="Diagnóstico de colisões">
+          <div class="strip-header">
+            <span class="section-label">Colisões</span>
+            <span id="collision-badge" class="badge-ok">OK</span>
+          </div>
+          <div id="collision-list" class="collision-list"></div>
+        </section>
+
+        <!-- 3-Tab Navigation -->
+        <div class="tabs-bar" role="tablist" aria-label="Secções do editor">
+          <button id="tab-btn-furniture" type="button" role="tab" aria-selected="true" aria-controls="panel-furniture" class="tab-btn">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v3"/><path d="M2 11v5a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5a2 2 0 0 0-4 0v2H6v-2a2 2 0 0 0-4 0Z"/><path d="M4 18v2M20 18v2"/></svg>
+            <span>Móveis</span>
+          </button>
+          <button id="tab-btn-cables" type="button" role="tab" aria-selected="false" aria-controls="panel-cables" class="tab-btn">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg>
+            <span>Cabos</span>
+          </button>
+          <button id="tab-btn-room" type="button" role="tab" aria-selected="false" aria-controls="panel-room" class="tab-btn">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 12h8v9"/><path d="M11 3v5h10"/></svg>
+            <span>Quarto</span>
+          </button>
+        </div>
+
+        <!-- TAB 1: MÓVEIS -->
+        <div id="panel-furniture" role="tabpanel" aria-labelledby="tab-btn-furniture" class="tab-panel">
+          <!-- Quick Add Block -->
+          <section class="panel-block quick-add-block">
+            <div class="block-head">
+              <label for="quick-add-input" class="section-label">Adicionar Móvel</label>
+              <button id="btn-open-new-item" type="button" class="icon-act" aria-label="Novo móvel com detalhes" title="Novo móvel com detalhes (Tecla N)">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8M8 12h8"/></svg>
+              </button>
+            </div>
+            <div class="quick-row">
+              <input id="quick-add-input" type="text" class="field-input" placeholder="Nome + medidas (ex: Mesa 45x40x55)" autocomplete="off" />
+              <label for="quick-add-photo" class="btn-icon-square" title="Anexar foto de referência">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                <span class="visually-hidden">Anexar foto</span>
+                <input id="quick-add-photo" type="file" accept="image/*" capture="environment" class="visually-hidden" />
+              </label>
+              <button id="btn-quick-add" type="button" class="btn-primary btn-icon-square" aria-label="Adicionar móvel" title="Adicionar móvel">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+            </div>
+            <div id="quick-chips" class="quick-chips" aria-label="Atalhos para adicionar móveis ou cabos">
+              <button type="button" class="chip-btn" data-quick="Mesa cabeceira 45x40x55">+ Mesa</button>
+              <button type="button" class="chip-btn" data-quick="Cadeira 50x50x85">+ Cadeira</button>
+              <button type="button" class="chip-btn" data-quick="Estante 80x30x180">+ Estante</button>
+              <button type="button" class="chip-btn" data-quick="Tapete 160x120x1">+ Tapete</button>
+              <button type="button" class="chip-btn" data-quick="Biombo divisória 145x4x180">+ Divisória</button>
+              <button type="button" class="chip-btn" data-quick-action="cable">+ Cabo</button>
+            </div>
+            <div id="quick-add-preview" class="quick-preview hidden"></div>
+            <div id="quick-photo-chip" class="photo-chip hidden">
+              <img id="quick-photo-thumb" src="" alt="Pré-visualização da foto anexada" />
+              <span>Foto anexada</span>
+              <button id="btn-clear-quick-photo" type="button" aria-label="Remover foto" title="Remover foto">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+          </section>
+
+          <!-- Selected Item Inspector (only visible when an item is selected) -->
+          <section id="inspector-section" class="panel-block hidden">
+            <div class="block-head">
+              <div class="sel-header-inline">
+                <strong id="sel-title" class="sel-title">Cama</strong>
+                <span id="sel-dims" class="sel-dims tabular">210×140×45 cm</span>
+              </div>
+              <button id="btn-edit-selected" type="button" class="icon-act" aria-label="Editar móvel selecionado" title="Editar móvel (Tecla E)">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              </button>
+            </div>
+
+            <div id="inspector-content" class="inspector-body">
+
+              <!-- Width / Depth / Height (cm) -->
+              <div class="grid-3">
+                <div class="field-group">
+                  <label for="inp-w">LARG. (cm)</label>
+                  <input id="inp-w" type="number" min="4" max="600" step="1" class="field-input tabular" />
+                </div>
+                <div class="field-group">
+                  <label for="inp-h">PROF. (cm)</label>
+                  <input id="inp-h" type="number" min="4" max="600" step="1" class="field-input tabular" />
+                </div>
+                <div class="field-group">
+                  <label for="inp-z">ALT. (cm)</label>
+                  <input id="inp-z" type="number" min="1" max="350" step="1" class="field-input tabular" />
+                </div>
+              </div>
+
+              <!-- Corner X / Y (cm) -->
+              <div class="grid-2">
+                <div class="field-group">
+                  <label for="inp-x">CANTO X (cm)</label>
+                  <input id="inp-x" type="number" step="1" class="field-input tabular" />
+                </div>
+                <div class="field-group">
+                  <label for="inp-y">CANTO Y (cm)</label>
+                  <input id="inp-y" type="number" step="1" class="field-input tabular" />
+                </div>
+              </div>
+
+              <!-- Wall Clearances -->
+              <div class="clearance-grid tabular" aria-label="Distâncias livres até paredes ou móveis">
+                <div><span>CIMA</span><strong id="clr-n">0cm</strong></div>
+                <div><span>BAIXO</span><strong id="clr-s">0cm</strong></div>
+                <div><span>ESQ</span><strong id="clr-w">0cm</strong></div>
+                <div><span>DIR</span><strong id="clr-e">0cm</strong></div>
+              </div>
+
+              <!-- Rotation Controls -->
+              <div>
+                <div class="rot-head">
+                  <span class="micro-label">ROTAÇÃO</span>
+                  <span id="sel-rot" class="micro-val tabular">0°</span>
+                </div>
+                <div id="rot-buttons" class="rot-grid">
+                  <button type="button" data-rot="0" class="mini-btn">0°</button>
+                  <button type="button" data-rot="45" class="mini-btn">45°</button>
+                  <button type="button" data-rot="90" class="mini-btn">90°</button>
+                  <button type="button" data-rot="180" class="mini-btn">180°</button>
+                  <button type="button" data-rot="270" class="mini-btn">270°</button>
+                  <button id="btn-rot-step" type="button" class="mini-btn mini-btn-accent" aria-label="Rodar mais 45 graus" title="Rodar +45°">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Quick Flags -->
+              <div class="toggle-row">
+                <label class="chk-label">
+                  <input id="chk-lock-dims" type="checkbox" class="checkbox-custom" />
+                  <span>Trancar tamanho no mapa</span>
+                </label>
+                <label class="chk-label">
+                  <input id="chk-ignore-col" type="checkbox" class="checkbox-custom" />
+                  <span>Não colide (tapete/alta)</span>
+                </label>
+              </div>
+
+              <!-- Divider Folding & Width -->
+              <div id="divider-box" class="divider-box hidden">
+                <div class="rot-head">
+                  <span class="micro-label">ARTICULAÇÃO (4 PAINÉIS)</span>
+                  <span id="divider-val" class="micro-val tabular">145 cm</span>
+                </div>
+                <div id="divider-fold-presets" class="fold-presets" role="group" aria-label="Formato da divisória">
+                  <button type="button" class="btn-chip" data-fold="flat" aria-label="Reto" title="Reto (alinhada a direito)">
+                    <svg aria-hidden="true" viewBox="0 0 28 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 8h24M8 6.5v3M14 6.5v3M20 6.5v3"/></svg>
+                  </button>
+                  <button type="button" class="btn-chip" data-fold="zigzag" aria-label="Biombo" title="Biombo em zigue-zague">
+                    <svg aria-hidden="true" viewBox="0 0 28 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,10 8,4 14,10 20,4 26,10"/></svg>
+                  </button>
+                  <button type="button" class="btn-chip" data-fold="l-right" aria-label="Canto L" title="Canto L (dobrar 90°)">
+                    <svg aria-hidden="true" viewBox="0 0 28 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="5,4 17,4 17,13"/></svg>
+                  </button>
+                  <button type="button" class="btn-chip" data-fold="l-left" aria-label="L Esquerda" title="L Esq (dobrar -90°)">
+                    <svg aria-hidden="true" viewBox="0 0 28 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="5,13 17,13 17,4"/></svg>
+                  </button>
+                  <button type="button" class="btn-chip" data-fold="arc" aria-label="Arco" title="Arco (curva suave)">
+                    <svg aria-hidden="true" viewBox="0 0 28 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 11Q14 2 25 11"/></svg>
+                  </button>
+                  <button type="button" class="btn-chip" data-fold="close" aria-label="Fechar em U" title="Fechar (dobrar em U)">
+                    <svg aria-hidden="true" viewBox="0 0 28 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4,12 4,4 24,4 24,12"/></svg>
+                  </button>
+                </div>
+                <input id="divider-range" type="range" min="60" max="240" step="5" value="145" aria-label="Largura total da divisória" aria-valuetext="145 centímetros" />
+              </div>
+
+              <!-- Optional Reference Photo Preview -->
+              <div id="sel-photo-box" class="sel-photo-box hidden">
+                <div class="rot-head">
+                  <span class="micro-label">FOTO GUARDADA DO MÓVEL</span>
+                  <button id="btn-remove-sel-photo" type="button" class="icon-act" aria-label="Remover foto do móvel" title="Remover foto">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                  </button>
+                </div>
+                <img id="sel-photo-img" src="" alt="Foto de referência do móvel selecionado" />
+              </div>
+            </div>
+          </section>
+
+          <!-- Furniture List -->
+          <section class="panel-block flex-1">
+            <div class="block-head">
+              <span class="section-label">Mobiliário</span>
+              <span id="item-count" class="micro-val tabular">8 itens</span>
+            </div>
+            <div id="item-list" class="item-list"></div>
+          </section>
+        </div>
+
+        <!-- TAB 2: CABOS -->
+        <div id="panel-cables" role="tabpanel" aria-labelledby="tab-btn-cables" class="tab-panel hidden">
+          <section class="panel-block">
+            <div class="block-head">
+              <span class="section-label">Cabos</span>
+              <button id="btn-new-cable" type="button" class="btn-primary btn-icon-square btn-sm" aria-label="Adicionar novo cabo" title="Adicionar novo cabo">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+            </div>
+            <div id="cable-list" class="cable-list"></div>
+          </section>
+        </div>
+
+        <!-- TAB 3: QUARTO -->
+        <div id="panel-room" role="tabpanel" aria-labelledby="tab-btn-room" class="tab-panel hidden">
+          <!-- Dimensions -->
+          <section class="panel-block">
+            <div class="block-head">
+              <span class="section-label">Divisão (cm)</span>
+            </div>
+            <div class="grid-2">
+              <div class="field-group">
+                <label for="room-w">LARGURA (X)</label>
+                <input id="room-w" type="number" min="100" max="1500" step="1" class="field-input tabular" />
+              </div>
+              <div class="field-group">
+                <label for="room-h">COMPRIMENTO (Y)</label>
+                <input id="room-h" type="number" min="100" max="1500" step="1" class="field-input tabular" />
+              </div>
+            </div>
+          </section>
+
+          <!-- Doors -->
+          <section class="panel-block">
+            <div class="block-head">
+              <span class="section-label">Portas</span>
+              <button id="btn-add-door" type="button" class="icon-act" aria-label="Adicionar porta" title="Adicionar porta">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+            </div>
+            <div id="doors-list" class="struct-list"></div>
+          </section>
+
+          <!-- Windows -->
+          <section class="panel-block">
+            <div class="block-head">
+              <span class="section-label">Janelas</span>
+              <button id="btn-add-window" type="button" class="icon-act" aria-label="Adicionar janela" title="Adicionar janela">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+            </div>
+            <div id="windows-list" class="struct-list"></div>
+          </section>
+
+          <!-- Outlets -->
+          <section class="panel-block">
+            <div class="block-head">
+              <span class="section-label">Tomadas Elétricas</span>
+              <button id="btn-add-outlet" type="button" class="icon-act" aria-label="Adicionar tomada" title="Adicionar tomada">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+            </div>
+            <div id="outlets-list" class="struct-list"></div>
+          </section>
+
+          <!-- Factory Reset Protection -->
+          <section class="panel-block">
+            <div class="block-head">
+              <span class="section-label">Projeto Demo Padrão</span>
+              <button id="btn-reset-factory" type="button" class="icon-act" aria-label="Repor projeto demo" title="Repor projeto demo (360×420 cm)">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+              </button>
+            </div>
+          </section>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- MODAL 1: CREATE / EDIT FURNITURE ITEM -->
+  <dialog id="item-dialog" closedby="any" aria-labelledby="item-dialog-title">
+    <form id="item-form" class="dialog-card">
+      <div class="dialog-head">
+        <h2 id="item-dialog-title">Novo Móvel</h2>
+        <button type="button" class="dialog-close" data-close-dialog="item-dialog" aria-label="Fechar janela"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      </div>
+
+      <div class="dialog-body">
+        <div class="field-group">
+          <label for="dlg-item-name">Nome do Móvel</label>
+          <input id="dlg-item-name" type="text" required placeholder="Ex: Mesa de Cabeceira" class="field-input" autofocus />
+        </div>
+
+        <div class="grid-3">
+          <div class="field-group">
+            <label for="dlg-item-w">Largura (cm)</label>
+            <input id="dlg-item-w" type="number" min="4" max="600" required class="field-input tabular" />
+          </div>
+          <div class="field-group">
+            <label for="dlg-item-h">Profundidade (cm)</label>
+            <input id="dlg-item-h" type="number" min="4" max="600" required class="field-input tabular" />
+          </div>
+          <div class="field-group">
+            <label for="dlg-item-z">Altura (cm)</label>
+            <input id="dlg-item-z" type="number" min="1" max="350" required class="field-input tabular" />
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label for="dlg-item-type">Categoria</label>
+          <select id="dlg-item-type" name="item-type" class="field-input"></select>
+        </div>
+
+        <div class="field-group">
+          <span class="micro-label">Cor na Planta</span>
+          <div id="dlg-color-swatches" class="swatch-row" role="radiogroup" aria-label="Cor do móvel"></div>
+        </div>
+
+        <div class="field-group">
+          <label for="dlg-item-photo">Foto (opcional)</label>
+          <input id="dlg-item-photo" type="file" accept="image/*" capture="environment" class="field-input" />
+        </div>
+
+        <div class="toggle-col">
+          <label class="chk-label">
+            <input id="dlg-item-ignore-col" type="checkbox" class="checkbox-custom" />
+            <span>Ignorar colisões (tapete ou prateleira alta)</span>
+          </label>
+          <label class="chk-label">
+            <input id="dlg-item-locked" type="checkbox" class="checkbox-custom" />
+            <span>Trancar dimensões na planta</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="dialog-foot">
+        <button type="button" class="btn-secondary" data-close-dialog="item-dialog">Cancelar</button>
+        <button type="submit" class="btn-primary">Guardar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- MODAL 2: CREATE / EDIT CABLE -->
+  <dialog id="cable-dialog" closedby="any" aria-labelledby="cable-dialog-title">
+    <form id="cable-form" class="dialog-card">
+      <div class="dialog-head">
+        <h2 id="cable-dialog-title">Nova Ligação / Cabo</h2>
+        <button type="button" class="dialog-close" data-close-dialog="cable-dialog" aria-label="Fechar janela"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      </div>
+
+      <div class="dialog-body">
+        <div class="field-group">
+          <label for="dlg-cable-name">Nome da Ligação</label>
+          <input id="dlg-cable-name" type="text" required placeholder="Ex: Cabo HDMI / Cabo Rede" class="field-input" autofocus />
+        </div>
+
+        <div class="grid-2">
+          <div class="field-group">
+            <label for="dlg-cable-from">Ponto A (Origem)</label>
+            <select id="dlg-cable-from" name="cable-from" class="field-input"></select>
+          </div>
+          <div class="field-group">
+            <label for="dlg-cable-to">Ponto B (Destino)</label>
+            <select id="dlg-cable-to" name="cable-to" class="field-input"></select>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="field-group">
+            <label for="dlg-cable-max">Comprimento Máximo (m)</label>
+            <input id="dlg-cable-max" type="number" min="0.5" max="30" step="0.1" value="3.0" required class="field-input tabular" />
+          </div>
+          <div class="field-group">
+            <label for="dlg-cable-mode">Caminho do Cabo</label>
+            <select id="dlg-cable-mode" name="cable-mode" class="field-input">
+              <option value="direct">Linha Direta (+5% folga)</option>
+              <option value="wall">Pelo Rodapé / Parede</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="dialog-foot">
+        <button type="button" class="btn-secondary" data-close-dialog="cable-dialog">Cancelar</button>
+        <button type="submit" class="btn-primary">Guardar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- MODAL 3: SAVE NEW LAYOUT -->
+  <dialog id="layout-dialog" closedby="any" aria-labelledby="layout-dialog-title">
+    <form id="layout-form" class="dialog-card dialog-sm">
+      <div class="dialog-head">
+        <h2 id="layout-dialog-title">Guardar Layout</h2>
+        <button type="button" class="dialog-close" data-close-dialog="layout-dialog" aria-label="Fechar janela"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      </div>
+      <div class="dialog-body">
+        <div class="field-group">
+          <label for="dlg-layout-name">Nome</label>
+          <input id="dlg-layout-name" type="text" required placeholder="Ex: Secretária na Janela" class="field-input" autofocus />
+        </div>
+      </div>
+      <div class="dialog-foot">
+        <button type="button" class="btn-secondary" data-close-dialog="layout-dialog">Cancelar</button>
+        <button type="submit" class="btn-primary">Guardar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- MODAL 4: JSON BACKUP / IMPORT / EXPORT -->
+  <dialog id="json-dialog" closedby="any" aria-labelledby="json-dialog-title">
+    <div class="dialog-card">
+      <div class="dialog-head">
+        <h2 id="json-dialog-title">Ficheiro do Projeto (.JSON)</h2>
+        <button type="button" class="dialog-close" data-close-dialog="json-dialog" aria-label="Fechar janela"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      </div>
+      <div class="dialog-body">
+        <div class="json-file-actions">
+          <button id="btn-download-json" type="button" class="btn-primary">Descarregar .JSON</button>
+          <label for="inp-upload-json" class="btn-secondary file-btn">
+            Abrir .JSON
+            <input id="inp-upload-json" type="file" accept=".json,application/json" class="visually-hidden" />
+          </label>
+        </div>
+        <label for="json-textarea" class="micro-label">JSON</label>
+        <textarea id="json-textarea" rows="10" class="field-input json-area tabular"></textarea>
+        <div id="json-feedback" class="json-feedback" role="status"></div>
+      </div>
+      <div class="dialog-foot dialog-foot-split">
+        <button id="btn-modal-reset-factory" type="button" class="btn-danger-outline">Repor Demo</button>
+        <div class="foot-right">
+          <button id="btn-copy-json" type="button" class="btn-secondary">Copiar</button>
+          <button id="btn-apply-json" type="button" class="btn-primary">Aplicar</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- MODAL 5: CONFIRMATION DIALOG (SAFE CANCEL AUTOFOCUS) -->
+  <dialog id="confirm-dialog" closedby="any" aria-labelledby="confirm-dialog-title">
+    <form method="dialog" class="dialog-card dialog-sm">
+      <div class="dialog-head">
+        <h2 id="confirm-dialog-title">Confirmar</h2>
+        <button type="submit" value="cancel" class="dialog-close" aria-label="Fechar"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      </div>
+      <div class="dialog-body">
+        <p id="confirm-dialog-msg" class="helper-copy"></p>
+      </div>
+      <div class="dialog-foot">
+        <button type="submit" value="cancel" class="btn-secondary" autofocus>Cancelar</button>
+        <button id="confirm-dialog-ok" type="submit" value="confirm" class="btn-danger">Confirmar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="./default-room.js?v=17"></script>
+  <script src="./app.js?v=17"></script>
+</body>
+</html>
