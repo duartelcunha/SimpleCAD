@@ -89,7 +89,7 @@ window.DEFAULT_PROJECT = {
         divisoria:  { minX: 0,   minY: 232, rot: 0,   w: 160, h: 4,   zHeight: 180, visible: true },
         secretaria: { minX: 160, minY: 270, rot: 0,   w: 140, h: 65,  zHeight: 75,  visible: true },
         cadeira:    { minX: 203, minY: 342, rot: 180, w: 55,  h: 55,  zHeight: 85,  visible: true },
-        pc:         { minX: 330, minY: 272, rot: 90,  w: 60,  h: 30,  zHeight: 60,  visible: true },
+        pc:         { minX: 330, minY: 245, rot: 90,  w: 60,  h: 30,  zHeight: 60,  visible: true },
         estante:    { minX: 280, minY: 385, rot: 0,   w: 80,  h: 35,  zHeight: 160, visible: true }
       }
     },

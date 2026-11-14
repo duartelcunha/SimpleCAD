@@ -19,7 +19,7 @@
     selectedId: 'cama',
     activeTab: 'furniture',
     viewMode: '2d', // '2d' | 'cables' | '3d'
-    cam3d: { yaw: -38, pitch: 46, zoom: 1, panX: 0, panY: 0 },
+    cam3d: { yaw: -34, pitch: 45, zoom: 1, panX: 0, panY: 0 },
     hitRegions3D: [],
     handleHits3D: [],
     gridStep: 5,
@@ -1500,9 +1500,9 @@
     targetCtx.lineTo(fl[2].x, fl[2].y);
     targetCtx.lineTo(fl[3].x, fl[3].y);
     targetCtx.closePath();
-    targetCtx.fillStyle = '#111116';
+    targetCtx.fillStyle = '#121316';
     targetCtx.fill();
-    targetCtx.strokeStyle = '#3f3f46';
+    targetCtx.strokeStyle = '#383b45';
     targetCtx.lineWidth = 1.5;
     targetCtx.stroke();
 
@@ -2117,11 +2117,11 @@
       targetCtx.textAlign = 'center';
       targetCtx.textBaseline = 'middle';
       targetCtx.font = '600 10px -apple-system, BlinkMacSystemFont, sans-serif';
-      targetCtx.fillStyle = isBad ? '#fecdd3' : isLight ? '#0f172a' : (isSel ? '#ffffff' : pal.text);
-      targetCtx.fillText(item.name, center.x, center.y - 14);
+      targetCtx.fillStyle = isBad ? '#f7d4d4' : isLight ? '#0f172a' : (isSel ? '#edeae4' : pal.text);
+      targetCtx.fillText(item.name, center.x, isSel ? center.y + 22 : center.y - 16);
       targetCtx.font = '500 8.5px "JetBrains Mono", Consolas, monospace';
-      targetCtx.fillStyle = isBad ? '#fb7185' : isLight ? '#475569' : '#a1a1aa';
-      targetCtx.fillText(`${Math.round(item.w)}×${Math.round(item.h)}×${Math.round(item.zHeight || 180)}`, center.x, center.y + 13);
+      targetCtx.fillStyle = isBad ? '#d96b6b' : isLight ? '#475569' : '#9a9891';
+      targetCtx.fillText(`${Math.round(item.w)}×${Math.round(item.h)}×${Math.round(item.zHeight || 180)}`, center.x, isSel ? center.y + 34 : center.y + 14);
       targetCtx.restore();
       return;
     }
