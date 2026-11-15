@@ -36,76 +36,85 @@ window.DEFAULT_PROJECT = {
   version: 2,
   app: 'SimpleCAD',
   room: {
-    name: 'Estúdio Demo (360×420 cm)',
-    w: 360,
-    h: 420,
+    name: 'Studio Bedroom (440×380 cm)',
+    w: 440,
+    h: 380,
     wallThickness: 14,
     doors: [
-      { id: 'door-1', name: 'Porta Principal', wall: 'bottom', offset: 25, width: 90, hinge: 'left', swing: 'inward' }
+      { id: 'door-1', name: 'Door', wall: 'bottom', offset: 28, width: 90, hinge: 'left', swing: 'inward' }
     ],
     windows: [
-      { id: 'win-1', name: 'Janela Ampla', wall: 'top', offset: 90, width: 180 }
+      { id: 'win-1', name: 'WINDOW', wall: 'top', offset: 36, width: 175 }
     ],
     outlets: [
-      { id: 'T1', name: 'T1', wall: 'left',  pos: 70,  x: 0,   y: 70 },
-      { id: 'T2', name: 'T2', wall: 'left',  pos: 320, x: 0,   y: 320 },
-      { id: 'T3', name: 'T3', wall: 'top',   pos: 300, x: 300, y: 0 },
-      { id: 'T4', name: 'T4', wall: 'right', pos: 180, x: 360, y: 180 }
+      { id: 'T1', name: 'T1', wall: 'top',    pos: 290, x: 290, y: 0 },
+      { id: 'T2', name: 'T2', wall: 'right',  pos: 165, x: 440, y: 165 },
+      { id: 'T3', name: 'T3', wall: 'left',   pos: 110, x: 0,   y: 110 },
+      { id: 'T4', name: 'T4', wall: 'bottom', pos: 215, x: 215, y: 380 }
     ]
   },
   cables: [
     {
       id: 'cable-demo',
-      name: 'Cabo DisplayPort (Workstation ↔ Monitor/TV)',
-      fromId: 'pc',
-      toId: 'tv',
-      maxMeters: 3.5,
-      warnMeters: 3.0,
+      name: 'Power Line',
+      fromId: 'desk',
+      toId: 'T1',
+      maxMeters: 4.5,
+      warnMeters: 3.8,
       routingMode: 'wall',
       color: '#6e9887',
       visible: true
     }
   ],
   catalog: [
-    { id: 'cama',       name: 'Cama de Casal',        type: 'bed',        w: 200, h: 150, zHeight: 45,  color: 'zinc',    ignoreCollision: false, lockedDims: false, visible: true },
-    { id: 'cabeceira',  name: 'Mesa de Cabeceira',    type: 'nightstand', w: 50,  h: 40,  zHeight: 55,  color: 'amber',   ignoreCollision: false, lockedDims: false, visible: true },
-    { id: 'divisoria',  name: 'Divisória Articulada', type: 'divider',    w: 160, h: 4,   zHeight: 180, foldAngles: [14, -18, 14], color: 'zinc', ignoreCollision: false, lockedDims: false, visible: true, adjustable: true },
-    { id: 'secretaria', name: 'Secretária Studio',    type: 'desk',       w: 140, h: 65,  zHeight: 75,  color: 'zinc',    ignoreCollision: false, lockedDims: false, visible: true },
-    { id: 'cadeira',    name: 'Cadeira Ergonómica',   type: 'chair',      w: 55,  h: 55,  zHeight: 85,  color: 'amber',   ignoreCollision: false, lockedDims: false, visible: true },
-    { id: 'tv',         name: 'Móvel TV & Monitor',   type: 'tv',         w: 120, h: 30,  zHeight: 45,  color: 'sky',     ignoreCollision: false, lockedDims: false, visible: true },
-    { id: 'pc',         name: 'Workstation',          type: 'pc',         w: 60,  h: 30,  zHeight: 60,  color: 'emerald', ignoreCollision: false, lockedDims: false, visible: true },
-    { id: 'estante',    name: 'Estante Arquitetura',  type: 'shelf',      w: 80,  h: 35,  zHeight: 160, color: 'zinc',    ignoreCollision: false, lockedDims: false, visible: true }
+    { id: 'rug',      name: 'Area Rug',       type: 'rug',        w: 228, h: 204, zHeight: 1,   color: 'violet',  ignoreCollision: true,  lockedDims: false, visible: true },
+    { id: 'bed',      name: 'Queen Bed',      type: 'bed',        w: 200, h: 155, zHeight: 46,  color: 'zinc',    ignoreCollision: false, lockedDims: false, visible: true },
+    { id: 'ns1',      name: 'Nightstand',     type: 'nightstand', w: 46,  h: 42,  zHeight: 54,  color: 'amber',   ignoreCollision: false, lockedDims: false, visible: true },
+    { id: 'ns2',      name: 'Nightstand',     type: 'nightstand', w: 46,  h: 42,  zHeight: 54,  color: 'amber',   ignoreCollision: false, lockedDims: false, visible: true },
+    { id: 'lamp',     name: 'Floor Lamp',     type: 'lamp',       w: 36,  h: 36,  zHeight: 162, color: 'amber',   ignoreCollision: false, lockedDims: false, visible: true },
+    { id: 'desk',     name: 'Oak Desk',       type: 'desk',       w: 140, h: 64,  zHeight: 75,  color: 'zinc',    ignoreCollision: false, lockedDims: false, visible: true },
+    { id: 'chair',    name: 'Studio Chair',   type: 'chair',      w: 52,  h: 52,  zHeight: 84,  color: 'amber',   ignoreCollision: false, lockedDims: false, visible: true },
+    { id: 'plant',    name: 'Ficus Plant',    type: 'plant',      w: 40,  h: 40,  zHeight: 112, color: 'emerald', ignoreCollision: false, lockedDims: false, visible: true },
+    { id: 'divider',  name: 'Folding Screen', type: 'divider',    w: 150, h: 4,   zHeight: 178, foldAngles: [16, -20, 16], color: 'zinc', ignoreCollision: false, lockedDims: false, visible: true, adjustable: true },
+    { id: 'shelf',    name: 'Bookcase',       type: 'shelf',      w: 120, h: 36,  zHeight: 175, color: 'zinc',    ignoreCollision: false, lockedDims: false, visible: true },
+    { id: 'wardrobe', name: 'Wardrobe',       type: 'wardrobe',   w: 150, h: 56,  zHeight: 205, color: 'zinc',    ignoreCollision: false, lockedDims: false, visible: true }
   ],
   activeLayoutId: 'opt1',
   layouts: [
     {
       id: 'opt1',
-      name: 'Estúdio & Lounge (Recomendado)',
+      name: 'Studio Suite (Default)',
       builtIn: true,
       placements: {
-        cabeceira:  { minX: 0,   minY: 16,  rot: 0,   w: 50,  h: 40,  zHeight: 55,  visible: true },
-        cama:       { minX: 0,   minY: 62,  rot: 0,   w: 200, h: 150, zHeight: 45,  visible: true },
-        tv:         { minX: 330, minY: 75,  rot: 90,  w: 120, h: 30,  zHeight: 45,  visible: true },
-        divisoria:  { minX: 0,   minY: 232, rot: 0,   w: 160, h: 4,   zHeight: 180, visible: true },
-        secretaria: { minX: 160, minY: 270, rot: 0,   w: 140, h: 65,  zHeight: 75,  visible: true },
-        cadeira:    { minX: 203, minY: 342, rot: 180, w: 55,  h: 55,  zHeight: 85,  visible: true },
-        pc:         { minX: 330, minY: 245, rot: 90,  w: 60,  h: 30,  zHeight: 60,  visible: true },
-        estante:    { minX: 280, minY: 385, rot: 0,   w: 80,  h: 35,  zHeight: 160, visible: true }
+        rug:      { minX: 206, minY: 56,  rot: 0,   w: 228, h: 204, zHeight: 1,   visible: true },
+        bed:      { minX: 240, minY: 72,  rot: 180, w: 200, h: 155, zHeight: 46,  visible: true },
+        ns1:      { minX: 394, minY: 20,  rot: 270, w: 46,  h: 42,  zHeight: 54,  visible: true },
+        ns2:      { minX: 394, minY: 236, rot: 270, w: 46,  h: 42,  zHeight: 54,  visible: true },
+        lamp:     { minX: 332, minY: 18,  rot: 0,   w: 36,  h: 36,  zHeight: 162, visible: true },
+        desk:     { minX: 54,  minY: 14,  rot: 0,   w: 140, h: 64,  zHeight: 75,  visible: true },
+        chair:    { minX: 98,  minY: 88,  rot: 0,   w: 52,  h: 52,  zHeight: 84,  visible: true },
+        plant:    { minX: 8,   minY: 14,  rot: 0,   w: 40,  h: 40,  zHeight: 112, visible: true },
+        divider:  { cx: 190,   cy: 154, rot: 90,  w: 150, h: 4,   zHeight: 178, visible: true, foldAngles: [16, -20, 16] },
+        shelf:    { minX: 0,   minY: 120, rot: 270, w: 120, h: 36,  zHeight: 175, visible: true },
+        wardrobe: { minX: 256, minY: 324, rot: 180, w: 150, h: 56,  zHeight: 205, visible: true }
       }
     },
     {
       id: 'opt2',
-      name: 'Suite Simétrica (Alternativo)',
+      name: 'Open Lounge (Alternative)',
       builtIn: true,
       placements: {
-        cabeceira:  { minX: 310, minY: 16,  rot: 0,   w: 50,  h: 40,  zHeight: 55,  visible: true },
-        cama:       { minX: 160, minY: 62,  rot: 180, w: 200, h: 150, zHeight: 45,  visible: true },
-        tv:         { minX: 0,   minY: 75,  rot: 270, w: 120, h: 30,  zHeight: 45,  visible: true },
-        divisoria:  { minX: 190, minY: 232, rot: 0,   w: 160, h: 4,   zHeight: 180, visible: true },
-        secretaria: { minX: 160, minY: 268, rot: 0,   w: 140, h: 65,  zHeight: 75,  visible: true },
-        cadeira:    { minX: 203, minY: 340, rot: 180, w: 55,  h: 55,  zHeight: 85,  visible: true },
-        pc:         { minX: 0,   minY: 250, rot: 90,  w: 60,  h: 30,  zHeight: 60,  visible: true },
-        estante:    { minX: 280, minY: 385, rot: 0,   w: 80,  h: 35,  zHeight: 160, visible: true }
+        rug:      { minX: 206, minY: 132, rot: 0,   w: 228, h: 204, zHeight: 1,   visible: true },
+        bed:      { minX: 240, minY: 152, rot: 180, w: 200, h: 155, zHeight: 46,  visible: true },
+        ns1:      { minX: 394, minY: 100, rot: 270, w: 46,  h: 42,  zHeight: 54,  visible: true },
+        ns2:      { minX: 394, minY: 316, rot: 270, w: 46,  h: 42,  zHeight: 54,  visible: true },
+        lamp:     { minX: 8,   minY: 16,  rot: 0,   w: 36,  h: 36,  zHeight: 162, visible: true },
+        desk:     { minX: 54,  minY: 14,  rot: 0,   w: 140, h: 64,  zHeight: 75,  visible: true },
+        chair:    { minX: 98,  minY: 88,  rot: 0,   w: 52,  h: 52,  zHeight: 84,  visible: true },
+        plant:    { minX: 210, minY: 14,  rot: 0,   w: 40,  h: 40,  zHeight: 112, visible: true },
+        divider:  { cx: 190,   cy: 205, rot: 90,  w: 150, h: 4,   zHeight: 178, visible: true, foldAngles: [14, -18, 14] },
+        shelf:    { minX: 0,   minY: 118, rot: 270, w: 120, h: 36,  zHeight: 175, visible: true },
+        wardrobe: { minX: 290, minY: 0,   rot: 0,   w: 150, h: 56,  zHeight: 205, visible: true }
       }
     }
   ]

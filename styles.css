@@ -2412,3 +2412,15 @@ dialog[open]:not([data-closing])::backdrop {
     outline: 2px solid Highlight;
   }
 }
+
+/* Presentation / Viewport-Only Capture Mode (?pure=1) */
+body.pure-cad .top-bar,
+body.pure-cad .sidebar,
+body.pure-cad .sel-hud,
+body.pure-cad .bottom-readout,
+body.pure-cad .zoom-controls,
+body.pure-cad .mobile-quick-bar,
+body.pure-cad #view-3d-hint,
+body.pure-cad #toast {
+  display: none !important;
+}

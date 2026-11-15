@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  Offline 2D &amp; 3D floorplan planner with centimeter grid snapping, polygon collision detection, cable routing, and a lightweight Win32 WebView2 shell (~762 KB).
+  Offline 2D &amp; 3D floorplan planner with centimeter grid snapping, polygon collision detection, cable routing, and a lightweight Win32 WebView2 shell (~766 KB).
 </p>
 
 <p align="center">

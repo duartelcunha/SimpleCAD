@@ -4,7 +4,7 @@
 (() => {
   'use strict';
 
-  const STORAGE_KEY = 'simplecad_project_v3';
+  const STORAGE_KEY = 'simplecad_project_v5';
   const MAX_HISTORY = 50;
 
   // =========================================================================
@@ -16,10 +16,10 @@
     cables: [],
     layouts: [],
     activeLayoutId: 'opt1',
-    selectedId: 'cama',
+    selectedId: 'divider',
     activeTab: 'furniture',
     viewMode: '2d', // '2d' | 'cables' | '3d'
-    cam3d: { yaw: -34, pitch: 45, zoom: 1, panX: 0, panY: 0 },
+    cam3d: { yaw: -22, pitch: 52, zoom: 0.94, panX: 0, panY: 0 },
     hitRegions3D: [],
     handleHits3D: [],
     gridStep: 5,
@@ -219,7 +219,8 @@
     const activeLayout = state.layouts.find(l => l.id === state.activeLayoutId) || state.layouts[0];
     state.items = buildItemsFromLayout(def.catalog, activeLayout);
     if (!preserveSelection || !state.items.some(i => i.id === state.selectedId)) {
-      state.selectedId = state.items[0] ? state.items[0].id : null;
+      const pref = state.items.find(i => i.id === 'divider') || state.items.find(i => i.type !== 'rug') || state.items[0];
+      state.selectedId = pref ? pref.id : null;
     }
     state.snapGuides = [];
     saveState();
@@ -985,11 +986,12 @@
   }
 
   function updateTransform(vw, vh) {
-    const padSide = vw < 640 ? 32 : 68;
+    const isPure = document.body.classList.contains('pure-cad');
+    const padSide = isPure ? 48 : (vw < 640 ? 32 : 68);
     const hudVisible = hudEl && !hudEl.classList.contains('hidden');
     const hudBottom = hudVisible ? (hudEl.offsetTop + hudEl.offsetHeight) : 0;
-    const padTop = Math.max(vw < 640 ? 58 : 108, hudBottom > 0 ? hudBottom + 42 : 0);
-    const padBot = vw < 640 ? 76 : 98;
+    const padTop = isPure ? 44 : Math.max(vw < 640 ? 58 : 108, hudBottom > 0 ? hudBottom + 42 : 0);
+    const padBot = isPure ? 52 : (vw < 640 ? 76 : 98);
     const availW = Math.max(120, vw - padSide * 2);
     const availH = Math.max(120, vh - padTop - padBot);
     const baseScale = Math.min(availW / state.room.w, availH / state.room.h);
@@ -1203,10 +1205,10 @@
       targetCtx.moveTo(ho.x, ho.y);
       targetCtx.arc(ho.x, ho.y, rPx, g.aStart, g.aEnd, false);
       targetCtx.closePath();
-      targetCtx.fillStyle = isLight ? 'rgba(217, 119, 6, 0.12)' : 'rgba(245, 158, 11, 0.08)';
+      targetCtx.fillStyle = isLight ? 'rgba(200, 169, 110, 0.14)' : 'rgba(200, 169, 110, 0.08)';
       targetCtx.fill();
       targetCtx.setLineDash([4, 4]);
-      targetCtx.strokeStyle = '#d97706';
+      targetCtx.strokeStyle = '#c8a96e';
       targetCtx.lineWidth = 1.25;
       targetCtx.stroke();
       targetCtx.setLineDash([]);
@@ -1215,14 +1217,15 @@
       targetCtx.beginPath();
       targetCtx.moveTo(ho.x, ho.y);
       targetCtx.lineTo(openPt.x, openPt.y);
-      targetCtx.strokeStyle = '#f59e0b';
+      targetCtx.strokeStyle = '#c8a96e';
       targetCtx.lineWidth = 2.6;
       targetCtx.stroke();
 
-      targetCtx.fillStyle = '#d97706';
+      targetCtx.fillStyle = '#c8a96e';
       targetCtx.font = '600 9px "JetBrains Mono", Consolas, monospace';
       targetCtx.textAlign = 'center';
-      targetCtx.fillText(`PORTA ${door.width}cm`, (ho.x + openPt.x) / 2 + 28, (ho.y + openPt.y) / 2);
+      const doorLabel = (door.name && !/^porta(\s|$)/i.test(door.name)) ? door.name.toUpperCase() : 'PORTA';
+      targetCtx.fillText(`${doorLabel} ${door.width}cm`, (ho.x + openPt.x) / 2 + 28, (ho.y + openPt.y) / 2);
       targetCtx.restore();
     }
 
@@ -1382,7 +1385,7 @@
     const rw = state.room.w || 270;
     const rh = state.room.h || 475;
     const cam = state.cam3d;
-    const scale = Math.min(widthPx / Math.max(260, rw * 1.48), heightPx / Math.max(320, rh * 1.25)) * cam.zoom;
+    const scale = Math.min(widthPx / Math.max(260, rw * 1.52), heightPx / Math.max(340, rh * 1.25 + 150)) * cam.zoom;
     return {
       cx: rw * 0.5,
       cy: rh * 0.5,
@@ -1390,7 +1393,7 @@
       pitchRad: degToRad(Math.max(14, Math.min(82, cam.pitch))),
       scale,
       sxMid: widthPx * 0.5 + cam.panX,
-      syMid: heightPx * 0.52 + cam.panY
+      syMid: heightPx * 0.56 + cam.panY
     };
   }
 
@@ -1542,9 +1545,9 @@
       targetCtx.moveTo(pts[0].x, pts[0].y);
       for (let i = 1; i < pts.length; i++) targetCtx.lineTo(pts[i].x, pts[i].y);
       targetCtx.closePath();
-      targetCtx.fillStyle = 'rgba(245, 158, 11, 0.1)';
+      targetCtx.fillStyle = 'rgba(200, 169, 110, 0.12)';
       targetCtx.fill();
-      targetCtx.strokeStyle = 'rgba(245, 158, 11, 0.45)';
+      targetCtx.strokeStyle = 'rgba(200, 169, 110, 0.55)';
       targetCtx.stroke();
     }
 
@@ -1627,9 +1630,9 @@
         case 'divider': {
           const geom = getDividerGeometry(item);
           geom.segments.forEach((seg, idx) => {
-            addBox3D(seg.poly, 0, zH, rgb, stroke, lineW, item.id, idx === 1 ? item.name : null, bias);
-            // Subtle upper & lower frame plinth lines
-            addBox3D(seg.poly, Math.max(0, zH - 3), zH + 0.5, tint(1.12), stroke, lineW * 0.85, item.id, null, bias + 1);
+            addBox3D(seg.poly, 0, zH, rgb, stroke, lineW, item.id, null, bias);
+            // Subtle upper & lower frame plinth lines (label on top face so plinth never paints over it)
+            addBox3D(seg.poly, Math.max(0, zH - 3), zH + 0.5, tint(1.12), stroke, lineW * 0.85, item.id, idx === 1 ? item.name : null, bias + 1);
           });
           // Vertical hinge rods at interior joints 1..3
           for (let j = 1; j <= 3; j++) {
@@ -1674,9 +1677,9 @@
           // Rear cross-brace
           part(-0.42, -0.43, 0.42, -0.38, Math.round(topZ * 0.65), topZ, darkTrim, stroke, 0.8, null, 0.5);
           // Tabletop slab
-          part(-0.5, -0.5, 0.5, 0.5, topZ, zH, tint(1.04), stroke, lineW, item.name, 2);
-          // Subtle desk mat / keyboard silhouette
-          part(-0.24, -0.14, 0.24, 0.26, zH, zH + 1.2, darkTrim, stroke, 0.7, null, 3);
+          part(-0.5, -0.5, 0.5, 0.5, topZ, zH, tint(1.04), stroke, lineW, null, 2);
+          // Subtle desk mat / keyboard silhouette (carries label so it stays crisp above mat)
+          part(-0.24, -0.14, 0.24, 0.26, zH, zH + 1.2, darkTrim, stroke, 0.7, item.name, 3);
           break;
         }
         case 'chair': {
@@ -1688,7 +1691,7 @@
           part(-0.44, 0.34, -0.34, 0.44, 0, seatBot, darkTrim, stroke, lineW * 0.8, null, 0);
           part(0.34, 0.34, 0.44, 0.44, 0, seatBot, darkTrim, stroke, lineW * 0.8, null, 0);
           // Seat cushion
-          part(-0.46, -0.44, 0.46, 0.46, seatBot, seatZ, rgb, stroke, lineW, item.name, 1.5);
+          part(-0.46, -0.44, 0.46, 0.46, seatBot, seatZ, rgb, stroke, lineW, null, 1.5);
           // Backrest
           part(-0.44, -0.48, 0.44, -0.32, seatZ, zH, tint(1.08), stroke, lineW, null, 2.5);
           // Armrests if wide enough
@@ -1697,6 +1700,8 @@
             part(-0.50, -0.38, -0.38, 0.36, seatZ, armTop, tint(0.9), stroke, 0.85, null, 2);
             part(0.38, -0.38, 0.50, 0.36, seatZ, armTop, tint(0.9), stroke, 0.85, null, 2);
           }
+          // Transparent crown label plane so chair armrests/backrest do not clip its own name
+          pushQuad(box(-0.46, -0.44, 0.46, 0.46).map(v => ({ x: v.x, y: v.y, z: zH + 1 })), 'transparent', 'transparent', 0, bias + 3.5, null, item.name);
           break;
         }
         case 'sofa': {
@@ -1828,7 +1833,7 @@
         case 'rug': {
           const matH = Math.min(3, zH);
           const rugBias = Math.min(bias, -4500);
-          addBox3D(box(-0.5, -0.5, 0.5, 0.5), 0, matH, rgb, stroke, lineW, item.id, item.name, rugBias);
+          addBox3D(box(-0.5, -0.5, 0.5, 0.5), 0, matH, rgb, stroke, lineW, item.id, null, rugBias);
           addBox3D(box(-0.43, -0.43, 0.43, 0.43), matH, matH + 0.4, tint(1.16), stroke, 0.7, item.id, null, rugBias + 1);
           break;
         }
@@ -1948,11 +1953,15 @@
       targetCtx.moveTo(pts[0].x, pts[0].y);
       for (let i = 1; i < pts.length; i++) targetCtx.lineTo(pts[i].x, pts[i].y);
       targetCtx.closePath();
-      targetCtx.fillStyle = f.fill;
-      targetCtx.fill();
-      targetCtx.strokeStyle = f.stroke;
-      targetCtx.lineWidth = f.lineWidth;
-      targetCtx.stroke();
+      if (f.fill && f.fill !== 'transparent') {
+        targetCtx.fillStyle = f.fill;
+        targetCtx.fill();
+      }
+      if (f.lineWidth > 0 && f.stroke && f.stroke !== 'transparent') {
+        targetCtx.strokeStyle = f.stroke;
+        targetCtx.lineWidth = f.lineWidth;
+        targetCtx.stroke();
+      }
 
       if (f.itemId) {
         state.hitRegions3D.push({ itemId: f.itemId, pts });
@@ -2301,24 +2310,40 @@
     } else {
       targetCtx.rotate(-degToRad(item.rot || 0));
     }
-    targetCtx.textAlign = 'center';
-    targetCtx.textBaseline = 'middle';
 
-    const spanW = isOblong ? wPx : (Math.abs(Math.sin(degToRad(rotNorm))) > 0.707 ? hPx : wPx);
-    const isCompact = spanW < 56 || Math.min(wPx, hPx) < 34;
-    const labelY = item.type === 'divider' ? -13 : (isCompact ? -5 : -6);
-    const subY = item.type === 'divider' ? 12 : (isCompact ? 6 : 7);
-
-    targetCtx.font = isCompact ? '600 9px -apple-system, BlinkMacSystemFont, sans-serif' : '600 10px -apple-system, BlinkMacSystemFont, sans-serif';
-    targetCtx.fillStyle = isBad ? '#fecdd3' : isLight ? '#0f172a' : (isSel ? '#ffffff' : pal.text);
-    targetCtx.fillText(item.name, 0, labelY);
-
-    targetCtx.font = isCompact ? '500 8px "JetBrains Mono", Consolas, monospace' : '500 8.5px "JetBrains Mono", Consolas, monospace';
-    targetCtx.fillStyle = isBad ? '#fb7185' : isLight ? '#475569' : '#a1a1aa';
     const dimText = item.zHeight
       ? `${Math.round(item.w)}×${Math.round(item.h)}×${Math.round(item.zHeight)}`
       : `${Math.round(item.w)}×${Math.round(item.h)}`;
-    targetCtx.fillText(dimText, 0, subY);
+
+    if (item.type === 'rug' && wPx >= 90 && hPx >= 55) {
+      // Tuck rug label at bottom-left margin so overlay furniture (beds/sofas) stays unobstructed
+      targetCtx.textAlign = 'left';
+      targetCtx.textBaseline = 'bottom';
+      const padL = -wPx / 2 + 10;
+      const padB = hPx / 2 - 8;
+      targetCtx.font = '600 9.5px -apple-system, BlinkMacSystemFont, sans-serif';
+      targetCtx.fillStyle = isBad ? '#fecdd3' : isLight ? 'rgba(15,23,42,0.72)' : (isSel ? '#ffffff' : 'rgba(237,234,228,0.78)');
+      targetCtx.fillText(item.name, padL, padB - 10);
+      targetCtx.font = '500 8px "JetBrains Mono", Consolas, monospace';
+      targetCtx.fillStyle = isBad ? '#fb7185' : isLight ? '#475569' : '#9a9891';
+      targetCtx.fillText(dimText, padL, padB);
+    } else {
+      targetCtx.textAlign = 'center';
+      targetCtx.textBaseline = 'middle';
+
+      const spanW = isOblong ? wPx : (Math.abs(Math.sin(degToRad(rotNorm))) > 0.707 ? hPx : wPx);
+      const isCompact = spanW < 56 || Math.min(wPx, hPx) < 34;
+      const labelY = item.type === 'divider' ? -13 : (isCompact ? -5 : -6);
+      const subY = item.type === 'divider' ? 12 : (isCompact ? 6 : 7);
+
+      targetCtx.font = isCompact ? '600 9px -apple-system, BlinkMacSystemFont, sans-serif' : '600 10px -apple-system, BlinkMacSystemFont, sans-serif';
+      targetCtx.fillStyle = isBad ? '#fecdd3' : isLight ? '#0f172a' : (isSel ? '#ffffff' : pal.text);
+      targetCtx.fillText(item.name, 0, labelY);
+
+      targetCtx.font = isCompact ? '500 8px "JetBrains Mono", Consolas, monospace' : '500 8.5px "JetBrains Mono", Consolas, monospace';
+      targetCtx.fillStyle = isBad ? '#fb7185' : isLight ? '#475569' : '#a1a1aa';
+      targetCtx.fillText(dimText, 0, subY);
+    }
 
     targetCtx.restore();
   }
@@ -4440,8 +4465,8 @@
     ['room-w', 'room-h'].forEach(id => {
       document.getElementById(id).addEventListener('change', () => {
         pushUndoSnapshot();
-        state.room.w = Math.max(100, Math.min(1500, Number(document.getElementById('room-w').value) || 360));
-        state.room.h = Math.max(100, Math.min(1500, Number(document.getElementById('room-h').value) || 420));
+        state.room.w = Math.max(100, Math.min(1500, Number(document.getElementById('room-w').value) || 440));
+        state.room.h = Math.max(100, Math.min(1500, Number(document.getElementById('room-h').value) || 380));
         saveState();
         syncUI();
       });
@@ -4468,7 +4493,7 @@
     });
 
     const resetFactoryHandler = async () => {
-      if (await openConfirmDialog('Repor Projeto Demo', 'Isto vai restaurar o Estúdio Demo padrão (360×420 cm), tomadas e os layouts iniciais. Continuar?')) {
+      if (await openConfirmDialog('Repor Projeto Demo', 'Isto vai restaurar o projeto demo Studio Bedroom (440×380 cm), tomadas e os layouts iniciais. Continuar?')) {
         pushUndoSnapshot();
         closeDialogSafe('json-dialog');
         applyDefaultProject(false);
@@ -4683,8 +4708,26 @@
 
   function init() {
     installProgressiveFallbacks();
-    if (!loadSavedState()) {
+    const qp = new URLSearchParams(window.location.search);
+    const isPure = qp.get('pure') === '1';
+    if (isPure || !loadSavedState()) {
       applyDefaultProject(false);
+    }
+    if (isPure) {
+      document.body.classList.add('pure-cad');
+      state.selectedId = qp.get('sel') || null;
+      if (qp.get('view') === '3d') {
+        state.viewMode = '3d';
+      }
+      const pureZoom = parseFloat(qp.get('zoom'));
+      if (Number.isFinite(pureZoom) && pureZoom >= 0.5 && pureZoom <= 3) {
+        if (state.viewMode === '3d') state.cam3d.zoom = pureZoom;
+        else state.zoom = pureZoom;
+      }
+      const pureYaw = parseFloat(qp.get('yaw'));
+      if (Number.isFinite(pureYaw)) state.cam3d.yaw = pureYaw;
+      const purePitch = parseFloat(qp.get('pitch'));
+      if (Number.isFinite(purePitch)) state.cam3d.pitch = purePitch;
     }
     bindAllEvents();
     onResize();
