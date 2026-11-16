@@ -2,7 +2,7 @@
 
 **Em uma frase:** planear a disposição dos móveis de um quarto, em 2D e 3D, sem depender de serviços externos.
 
-**Estado:** motor herdado revisto e corrigido; validação concluída no browser e no executável Windows. Falta fundir o PR com o OK do Duarte.
+**Estado:** motor herdado revisto e corrigido; validação concluída no browser e no executável Windows. Merge autorizado pelo Duarte, ainda bloqueado pela sessão de execução.
 
 **Última atualização:** 2026-11-16, Codex.
 
@@ -24,7 +24,7 @@
 - Instalador NSIS recompilado a partir desse executável; os ficheiros fonte permaneceram iguais entre a compilação, o teste e o empacotamento.
 
 ## Próximo passo
-As correções já foram enviadas. O PR continua em rascunho e ainda tem a descrição da recuperação; falta atualizar essa apresentação, bloqueada pela sessão atual, antes de pedir o merge. Fundir apenas com o OK do Duarte, pelo processo de merge da máquina. O [alerta glib](https://github.com/duartelcunha/SimpleCAD/security/dependabot/1) continua aberto na main: a dependência foi removida neste ramo, sem ocultar o alerta. Confirmar o estado no GitHub depois do merge.
+As correções já foram enviadas. Em 2026-11-16, o Duarte escolheu explicitamente «Incluir o merge» e pediu implementar o plano; essa autorização continua válida para o PR #1, sem release. O PR ainda está em rascunho com a descrição da recuperação: atualizar a apresentação, retirar o rascunho e fundir pelo processo de merge da máquina depois de reiniciar o Codex. A regra antiga já foi removida com autorização, mas a sessão continua a recusar a escrita; a documentação oficial indica que as regras são carregadas no arranque. Não repetir o pedido de autorização nem contornar a restrição ativa. O [alerta glib](https://github.com/duartelcunha/SimpleCAD/security/dependabot/1) continua aberto na main: a dependência foi removida neste ramo, sem ocultar o alerta. Confirmar o estado no GitHub depois do merge.
 
 ## Decisões e limites
 - O editor continua a ter uma divisão retangular. Edifícios, pisos, camadas e paredes interiores dos documentos e exemplos v3 são propostas.
