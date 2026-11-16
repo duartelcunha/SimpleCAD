@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#0d0e10" />
+  <meta name="theme-color" content="#0a0b0d" />
   <meta name="description" content="SimpleCAD — Estúdio CAD 2D & 3D offline para plantas de interiores, mobiliário e cablagem." />
   <title>SimpleCAD — Studio Bedroom (440×380 cm)</title>
   <link rel="icon" type="image/svg+xml" href="./icon.svg" />
-  <link rel="stylesheet" href="./styles.css?v=21" />
+  <link rel="stylesheet" href="./styles.css?v=33" />
 </head>
 <body>
   <div class="app-shell">
@@ -15,15 +15,60 @@
     <header class="top-bar">
       <div class="brand">
         <svg class="brand-icon" aria-hidden="true" viewBox="0 0 128 128" fill="none">
-          <rect width="128" height="128" rx="26" fill="#0D0E10"/>
-          <rect x="1" y="1" width="126" height="126" rx="25" stroke="#22242A" stroke-width="1"/>
-          <polygon points="28,42 46,31 46,87 28,98" fill="#EDEAE4"/>
-          <polygon points="48,31 64,41 64,97 48,87" fill="#5D5B55"/>
-          <polygon points="66,41 82,31 82,87 66,97" fill="#EDEAE4"/>
-          <polygon points="84,31 100,41 100,97 84,87" fill="#C8A96E"/>
+          <defs>
+            <linearGradient id="hdrLogoBg" x1="64" y1="0" x2="64" y2="128" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#151B24"/>
+              <stop offset="100%" stop-color="#080B10"/>
+            </linearGradient>
+            <radialGradient id="hdrLogoAmbient" cx="56%" cy="46%" r="58%">
+              <stop offset="0%" stop-color="#5B94C7" stop-opacity="0.18"/>
+              <stop offset="100%" stop-color="#080B10" stop-opacity="0"/>
+            </radialGradient>
+            <linearGradient id="hdrPlaneBack" x1="23" y1="42" x2="48" y2="86" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#385B7B"/>
+              <stop offset="100%" stop-color="#1C3044"/>
+            </linearGradient>
+            <linearGradient id="hdrPlaneMid" x1="38" y1="32" x2="70" y2="96" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#6EA9DC"/>
+              <stop offset="100%" stop-color="#376996"/>
+            </linearGradient>
+            <linearGradient id="hdrPlaneFront" x1="54" y1="20" x2="106" y2="108" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#FCFBF7"/>
+              <stop offset="68%" stop-color="#E4E0D6"/>
+              <stop offset="100%" stop-color="#C8BFA9"/>
+            </linearGradient>
+            <linearGradient id="hdrPlaneBrass" x1="58" y1="24" x2="58" y2="104" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#FFE082"/>
+              <stop offset="50%" stop-color="#E5A935"/>
+              <stop offset="100%" stop-color="#B87A14"/>
+            </linearGradient>
+            <linearGradient id="hdrLogoRim" x1="64" y1="0" x2="64" y2="128" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.16"/>
+              <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.04"/>
+            </linearGradient>
+          </defs>
+          <rect width="128" height="128" rx="28" fill="url(#hdrLogoBg)"/>
+          <rect width="128" height="128" rx="28" fill="url(#hdrLogoAmbient)"/>
+          <rect x="23" y="42" width="24" height="44" rx="7" fill="url(#hdrPlaneBack)"/>
+          <rect x="38" y="32" width="28" height="64" rx="9" fill="url(#hdrPlaneMid)"/>
+          <path d="M60 26 L98 20 C102.5 19.3 106 22.8 106 27.4 V100.6 C106 105.2 102.5 108.7 98 108 L60 102 C56.5 101.4 54 98.4 54 94.8 V33.2 C54 29.6 56.5 26.6 60 26 Z" fill="url(#hdrPlaneFront)"/>
+          <path d="M54 36 C54 30.8 56.5 27.2 60 26.2 L62.5 25.8 V102.2 L60 101.8 C56.5 100.8 54 97.2 54 92 V36 Z" fill="url(#hdrPlaneBrass)"/>
+          <rect x="0.75" y="0.75" width="126.5" height="126.5" rx="27.25" stroke="url(#hdrLogoRim)" stroke-width="1.5"/>
         </svg>
         <div class="brand-text">
-          <h1>SimpleCAD</h1>
+          <h1 class="brand-wordmark" aria-label="SimpleCAD">
+            <svg class="brand-wordmark-svg" aria-hidden="true" viewBox="0 0 176 20" fill="none">
+              <path d="M2 15.3 C2 17.6 4 18.8 7.8 18.8 C11.8 18.8 14 17.3 14 14.6 C14 12 12 10.9 8 10.2 C5.2 9.7 4.2 9 4.2 7.6 C4.2 6.2 5.5 5.2 7.8 5.2 C10.4 5.2 11.8 6.2 12 7.8 H14 C13.8 5 11.4 3.4 7.8 3.4 C4.3 3.4 2.2 5.2 2.2 7.7 C2.2 10.2 4.1 11.4 7.8 12 C10.8 12.5 12 13.2 12 14.7 C12 16.3 10.4 17 7.8 17 C5.2 17 4 16.1 3.8 14.6 H2 Z" fill="#F2EFE8"/>
+              <rect x="21.5" y="3.6" width="2.1" height="15" fill="#F2EFE8"/>
+              <path d="M31.8 18.6 V3.6 H34.4 L40.3 14 L46.2 3.6 H48.8 V18.6 H46.7 V7.1 L41.2 16.7 H39.4 L33.9 7.1 V18.6 H31.8 Z" fill="#F2EFE8"/>
+              <path d="M57 18.6 V3.6 H63.5 C67.1 3.6 69.2 5.4 69.2 8.4 C69.2 11.4 67.1 13.2 63.5 13.2 H59.1 V18.6 H57 Z M59.1 11.3 H63.3 C65.8 11.3 67.1 10.2 67.1 8.4 C67.1 6.6 65.8 5.5 63.3 5.5 H59.1 V11.3 Z" fill="#F2EFE8"/>
+              <path d="M76 18.6 V3.6 H78.1 V16.7 H86.2 V18.6 H76 Z" fill="#F2EFE8"/>
+              <path d="M92.8 18.6 V3.6 H103.8 V5.5 H94.9 V10 H102.6 V11.9 H94.9 V16.7 H104 V18.6 H92.8 Z" fill="#F2EFE8"/>
+              <path d="M124.2 18.8 C119.4 18.8 116.4 15.8 116.4 11.1 C116.4 6.4 119.4 3.4 124.2 3.4 C127.8 3.4 130.2 5.2 131 8 H128.7 C128 6.2 126.4 5.3 124.2 5.3 C120.6 5.3 118.6 7.6 118.6 11.1 C118.6 14.6 120.6 16.9 124.2 16.9 C126.5 16.9 128.1 15.9 128.8 14 H131.1 C130.2 17 127.8 18.8 124.2 18.8 Z" fill="#9BBAD7"/>
+              <path d="M137.2 18.6 L143.8 3.6 H146.4 L153 18.6 H150.7 L145.1 5.9 L139.5 18.6 H137.2 Z" fill="#9BBAD7"/>
+              <path d="M159.4 18.6 V3.6 H165.4 C170.2 3.6 173 6.5 173 11.1 C173 15.7 170.2 18.6 165.4 18.6 H159.4 Z M161.5 16.7 H165.3 C168.9 16.7 170.8 14.6 170.8 11.1 C170.8 7.6 168.9 5.5 165.3 5.5 H161.5 V16.7 Z" fill="#9BBAD7"/>
+            </svg>
+          </h1>
           <span id="room-size-badge" class="room-badge tabular">440×380 cm</span>
         </div>
       </div>
@@ -162,6 +207,12 @@
         <!-- Subtle 3D Orbit Hint -->
         <div id="view-3d-hint" class="view-3d-hint hidden" aria-hidden="true">Arrastar: rodar · Scroll: zoom</div>
 
+        <!-- Render Style Switch (Solid / ID Sketch for 2D & 3D) -->
+        <div id="style-3d-switch" class="style-3d-switch" role="group" aria-label="Estilo de renderização 2D e 3D">
+          <button id="btn-style3d-solid" type="button" class="style3d-btn" aria-pressed="true" title="Estilo Sólido Harbour (2D e 3D)">Solid</button>
+          <button id="btn-style3d-sketch" type="button" class="style3d-btn" aria-pressed="false" title="Desenho Técnico / ID Sketch (2D e 3D)">Sketch</button>
+        </div>
+
         <!-- Bottom-left technical readout -->
         <div class="bottom-readout tabular">
           <span id="cursor-coords">X: 0 cm | Y: 0 cm</span>
@@ -237,7 +288,7 @@
               </button>
             </div>
             <div class="quick-row">
-              <input id="quick-add-input" type="text" class="field-input" placeholder="Nome + medidas (ex: Mesa 45x40x55)" autocomplete="off" />
+              <input id="quick-add-input" type="text" class="field-input" placeholder="Ex: Mesa 120x60" title="Nome e medidas (ex: Mesa 120x60x75)" autocomplete="off" />
               <label for="quick-add-photo" class="btn-icon-square" title="Anexar foto de referência">
                 <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
                 <span class="visually-hidden">Anexar foto</span>
@@ -652,7 +703,7 @@
     </form>
   </dialog>
 
-  <script src="./default-room.js?v=23"></script>
-  <script src="./app.js?v=23"></script>
+  <script src="./default-room.js?v=33"></script>
+  <script src="./app.js?v=33"></script>
 </body>
 </html>

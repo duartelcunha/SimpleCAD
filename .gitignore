@@ -4,6 +4,7 @@ native/target/
 *.msi
 *.pdb
 *.log
+/benchmarks/benchmark-results.json
 
 # OS & editor files
 .DS_Store

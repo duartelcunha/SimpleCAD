@@ -4,12 +4,12 @@
  */
 
 window.COLOR_PALETTE = {
-  zinc:    { label: 'Osso / Pedra',   stroke: '#d6d3cd', fill: 'rgba(214, 211, 205, 0.14)', text: '#edeae4' },
-  amber:   { label: 'Latão / Âmbar',  stroke: '#c8a96e', fill: 'rgba(200, 169, 110, 0.16)', text: '#f3e5c8' },
-  sky:     { label: 'Azul Aço',       stroke: '#6b93b8', fill: 'rgba(107, 147, 184, 0.16)', text: '#cfe0f0' },
-  emerald: { label: 'Verde Mineral',  stroke: '#6e9887', fill: 'rgba(110, 152, 135, 0.16)', text: '#c7e2d7' },
-  violet:  { label: 'Taupe Quente',   stroke: '#9e8c7a', fill: 'rgba(158, 140, 122, 0.16)', text: '#e6ddd3' },
-  rose:    { label: 'Terracota',      stroke: '#d96b6b', fill: 'rgba(217, 107, 107, 0.16)', text: '#f7d4d4' }
+  zinc:    { label: 'Osso / Calcário',      stroke: '#d6d3cd', fill: 'rgba(234, 231, 223, 0.14)', text: '#EAE7DF' },
+  amber:   { label: 'Ocre Arquitetónico',   stroke: '#d99b26', fill: 'rgba(217, 155, 38, 0.16)', text: '#f0ad2c' },
+  sky:     { label: 'Azul Porto / Harbour', stroke: '#5a8cb2', fill: 'rgba(90, 140, 178, 0.16)', text: '#8cb0d1' },
+  emerald: { label: 'Verde Mineral',         stroke: '#6e9887', fill: 'rgba(110, 152, 135, 0.16)', text: '#c7e2d7' },
+  violet:  { label: 'Taupe / Linho',        stroke: '#9e8c7a', fill: 'rgba(158, 140, 122, 0.16)', text: '#e6ddd3' },
+  rose:    { label: 'Terracota',            stroke: '#d96b6b', fill: 'rgba(217, 107, 107, 0.16)', text: '#f7d4d4' }
 };
 
 window.ARCHETYPES = [

@@ -1,0 +1,1126 @@
+{
+  "version": 3,
+  "app": "SimpleCAD",
+  "createdAt": "2026-11-15T13:30:00.000Z",
+  "updatedAt": "2026-11-15T13:30:00.000Z",
+  "project": {
+    "id": "proj-small-studio",
+    "name": "Studio Bedroom Baseline (440×380 cm)",
+    "author": "SimpleCAD Architecture Lab",
+    "units": "cm",
+    "gridStepCm": 10,
+    "majorGridStepCm": 50,
+    "activeBuildingId": "bldg-studio",
+    "activeStoreyId": "lvl-0",
+    "activeLayoutId": "opt1"
+  },
+  "room": {
+    "name": "Studio Bedroom (440×380 cm)",
+    "w": 440,
+    "h": 380,
+    "wallThickness": 14,
+    "doors": [
+      {
+        "id": "door-1",
+        "name": "Main Door",
+        "wall": "bottom",
+        "offset": 28,
+        "width": 90,
+        "hinge": "left",
+        "swing": "inward"
+      }
+    ],
+    "windows": [
+      {
+        "id": "win-1",
+        "name": "Exterior Window",
+        "wall": "top",
+        "offset": 36,
+        "width": 175
+      }
+    ],
+    "outlets": [
+      {
+        "id": "T1",
+        "name": "T1",
+        "wall": "top",
+        "pos": 290,
+        "x": 290,
+        "y": 0
+      },
+      {
+        "id": "T2",
+        "name": "T2",
+        "wall": "right",
+        "pos": 165,
+        "x": 440,
+        "y": 165
+      },
+      {
+        "id": "T3",
+        "name": "T3",
+        "wall": "left",
+        "pos": 110,
+        "x": 0,
+        "y": 110
+      },
+      {
+        "id": "T4",
+        "name": "T4",
+        "wall": "bottom",
+        "pos": 215,
+        "x": 215,
+        "y": 380
+      }
+    ]
+  },
+  "cables": [
+    {
+      "id": "cable-demo",
+      "name": "Power Line (Desk to T1)",
+      "fromId": "desk",
+      "toId": "T1",
+      "maxMeters": 4.5,
+      "warnMeters": 3.8,
+      "routingMode": "wall",
+      "color": "#6e9887",
+      "visible": true
+    }
+  ],
+  "catalog": [
+    {
+      "id": "rug",
+      "name": "Area Rug",
+      "type": "rug",
+      "w": 228,
+      "h": 204,
+      "zHeight": 1,
+      "color": "violet",
+      "ignoreCollision": true,
+      "lockedDims": false,
+      "visible": true
+    },
+    {
+      "id": "bed",
+      "name": "Queen Bed",
+      "type": "bed",
+      "w": 200,
+      "h": 155,
+      "zHeight": 46,
+      "color": "zinc",
+      "ignoreCollision": false,
+      "lockedDims": false,
+      "visible": true
+    },
+    {
+      "id": "ns1",
+      "name": "Nightstand N",
+      "type": "nightstand",
+      "w": 46,
+      "h": 42,
+      "zHeight": 54,
+      "color": "amber",
+      "ignoreCollision": false,
+      "lockedDims": false,
+      "visible": true
+    },
+    {
+      "id": "ns2",
+      "name": "Nightstand S",
+      "type": "nightstand",
+      "w": 46,
+      "h": 42,
+      "zHeight": 54,
+      "color": "amber",
+      "ignoreCollision": false,
+      "lockedDims": false,
+      "visible": true
+    },
+    {
+      "id": "lamp",
+      "name": "Floor Lamp",
+      "type": "lamp",
+      "w": 36,
+      "h": 36,
+      "zHeight": 162,
+      "color": "amber",
+      "ignoreCollision": false,
+      "lockedDims": false,
+      "visible": true
+    },
+    {
+      "id": "desk",
+      "name": "Oak Desk",
+      "type": "desk",
+      "w": 140,
+      "h": 64,
+      "zHeight": 75,
+      "color": "zinc",
+      "ignoreCollision": false,
+      "lockedDims": false,
+      "visible": true
+    },
+    {
+      "id": "chair",
+      "name": "Studio Chair",
+      "type": "chair",
+      "w": 52,
+      "h": 52,
+      "zHeight": 84,
+      "color": "amber",
+      "ignoreCollision": false,
+      "lockedDims": false,
+      "visible": true
+    },
+    {
+      "id": "plant",
+      "name": "Ficus Plant",
+      "type": "plant",
+      "w": 40,
+      "h": 40,
+      "zHeight": 112,
+      "color": "emerald",
+      "ignoreCollision": false,
+      "lockedDims": false,
+      "visible": true
+    },
+    {
+      "id": "divider",
+      "name": "Folding Screen",
+      "type": "divider",
+      "w": 150,
+      "h": 4,
+      "zHeight": 178,
+      "foldAngles": [
+        16,
+        -20,
+        16
+      ],
+      "color": "zinc",
+      "ignoreCollision": false,
+      "lockedDims": false,
+      "visible": true,
+      "adjustable": true
+    },
+    {
+      "id": "shelf",
+      "name": "Bookcase",
+      "type": "shelf",
+      "w": 120,
+      "h": 36,
+      "zHeight": 175,
+      "color": "zinc",
+      "ignoreCollision": false,
+      "lockedDims": false,
+      "visible": true
+    },
+    {
+      "id": "wardrobe",
+      "name": "Wardrobe",
+      "type": "wardrobe",
+      "w": 150,
+      "h": 56,
+      "zHeight": 205,
+      "color": "zinc",
+      "ignoreCollision": false,
+      "lockedDims": false,
+      "visible": true
+    },
+    {
+      "id": "mirror",
+      "name": "Vanity Mirror",
+      "type": "mirror",
+      "w": 55,
+      "h": 8,
+      "zHeight": 165,
+      "color": "sky",
+      "ignoreCollision": false,
+      "lockedDims": false,
+      "visible": true
+    }
+  ],
+  "items": [
+    {
+      "id": "rug",
+      "name": "Area Rug",
+      "type": "rug",
+      "x": 320,
+      "y": 158,
+      "cx": 320,
+      "cy": 158,
+      "w": 228,
+      "h": 204,
+      "zHeight": 1,
+      "rot": 0,
+      "color": "violet",
+      "ignoreCollision": true,
+      "lockedDims": false,
+      "visible": true,
+      "adjustable": false
+    },
+    {
+      "id": "bed",
+      "name": "Queen Bed",
+      "type": "bed",
+      "x": 340,
+      "y": 149.5,
+      "cx": 340,
+      "cy": 149.5,
+      "w": 200,
+      "h": 155,
+      "zHeight": 46,
+      "rot": 180,
+      "color": "zinc",
+      "ignoreCollision": false,
+      "lockedDims": false,
+      "visible": true,
+      "adjustable": false
+    },
+    {
+      "id": "ns1",
+      "name": "Nightstand N",
+      "type": "nightstand",
+      "x": 417,
+      "y": 41,
+      "cx": 417,
+      "cy": 41,
+      "w": 46,
+      "h": 42,
+      "zHeight": 54,
+      "rot": 270,
+      "color": "amber",
+      "ignoreCollision": false,
+      "lockedDims": false,
+      "visible": true,
+      "adjustable": false
+    },
+    {
+      "id": "ns2",
+      "name": "Nightstand S",
+      "type": "nightstand",
+      "x": 417,
+      "y": 257,
+      "cx": 417,
+      "cy": 257,
+      "w": 46,
+      "h": 42,
+      "zHeight": 54,
+      "rot": 270,
+      "color": "amber",
+      "ignoreCollision": false,
+      "lockedDims": false,
+      "visible": true,
+      "adjustable": false
+    },
+    {
+      "id": "lamp",
+      "name": "Floor Lamp",
+      "type": "lamp",
+      "x": 350,
+      "y": 36,
+      "cx": 350,
+      "cy": 36,
+      "w": 36,
+      "h": 36,
+      "zHeight": 162,
+      "rot": 0,
+      "color": "amber",
+      "ignoreCollision": false,
+      "lockedDims": false,
+      "visible": true,
+      "adjustable": false
+    },
+    {
+      "id": "desk",
+      "name": "Oak Desk",
+      "type": "desk",
+      "x": 124,
+      "y": 46,
+      "cx": 124,
+      "cy": 46,
+      "w": 140,
+      "h": 64,
+      "zHeight": 75,
+      "rot": 0,
+      "color": "zinc",
+      "ignoreCollision": false,
+      "lockedDims": false,
+      "visible": true,
+      "adjustable": false
+    },
+    {
+      "id": "chair",
+      "name": "Studio Chair",
+      "type": "chair",
+      "x": 124,
+      "y": 114,
+      "cx": 124,
+      "cy": 114,
+      "w": 52,
+      "h": 52,
+      "zHeight": 84,
+      "rot": 0,
+      "color": "amber",
+      "ignoreCollision": false,
+      "lockedDims": false,
+      "visible": true,
+      "adjustable": false
+    },
+    {
+      "id": "plant",
+      "name": "Ficus Plant",
+      "type": "plant",
+      "x": 28,
+      "y": 34,
+      "cx": 28,
+      "cy": 34,
+      "w": 40,
+      "h": 40,
+      "zHeight": 112,
+      "rot": 0,
+      "color": "emerald",
+      "ignoreCollision": false,
+      "lockedDims": false,
+      "visible": true,
+      "adjustable": false
+    },
+    {
+      "id": "divider",
+      "name": "Folding Screen",
+      "type": "divider",
+      "x": 190,
+      "y": 154,
+      "cx": 190,
+      "cy": 154,
+      "w": 150,
+      "h": 4,
+      "zHeight": 178,
+      "rot": 90,
+      "color": "zinc",
+      "ignoreCollision": false,
+      "lockedDims": false,
+      "visible": true,
+      "adjustable": true,
+      "foldAngles": [
+        16,
+        -20,
+        16
+      ]
+    },
+    {
+      "id": "shelf",
+      "name": "Bookcase",
+      "type": "shelf",
+      "x": 60,
+      "y": 138,
+      "cx": 60,
+      "cy": 138,
+      "w": 120,
+      "h": 36,
+      "zHeight": 175,
+      "rot": 270,
+      "color": "zinc",
+      "ignoreCollision": false,
+      "lockedDims": false,
+      "visible": true,
+      "adjustable": false
+    },
+    {
+      "id": "wardrobe",
+      "name": "Wardrobe",
+      "type": "wardrobe",
+      "x": 331,
+      "y": 352,
+      "cx": 331,
+      "cy": 352,
+      "w": 150,
+      "h": 56,
+      "zHeight": 205,
+      "rot": 180,
+      "color": "zinc",
+      "ignoreCollision": false,
+      "lockedDims": false,
+      "visible": true,
+      "adjustable": false
+    },
+    {
+      "id": "mirror",
+      "name": "Vanity Mirror",
+      "type": "mirror",
+      "x": 29.5,
+      "y": 264,
+      "cx": 29.5,
+      "cy": 264,
+      "w": 55,
+      "h": 8,
+      "zHeight": 165,
+      "rot": 90,
+      "color": "sky",
+      "ignoreCollision": false,
+      "lockedDims": false,
+      "visible": true,
+      "adjustable": false
+    }
+  ],
+  "activeLayoutId": "opt1",
+  "layouts": [
+    {
+      "id": "opt1",
+      "name": "Studio Suite (Default Baseline)",
+      "builtIn": true,
+      "placements": {
+        "rug": {
+          "minX": 206,
+          "minY": 56,
+          "rot": 0,
+          "w": 228,
+          "h": 204,
+          "zHeight": 1,
+          "visible": true
+        },
+        "bed": {
+          "minX": 240,
+          "minY": 72,
+          "rot": 180,
+          "w": 200,
+          "h": 155,
+          "zHeight": 46,
+          "visible": true
+        },
+        "ns1": {
+          "minX": 394,
+          "minY": 20,
+          "rot": 270,
+          "w": 46,
+          "h": 42,
+          "zHeight": 54,
+          "visible": true
+        },
+        "ns2": {
+          "minX": 394,
+          "minY": 236,
+          "rot": 270,
+          "w": 46,
+          "h": 42,
+          "zHeight": 54,
+          "visible": true
+        },
+        "lamp": {
+          "minX": 332,
+          "minY": 18,
+          "rot": 0,
+          "w": 36,
+          "h": 36,
+          "zHeight": 162,
+          "visible": true
+        },
+        "desk": {
+          "minX": 54,
+          "minY": 14,
+          "rot": 0,
+          "w": 140,
+          "h": 64,
+          "zHeight": 75,
+          "visible": true
+        },
+        "chair": {
+          "minX": 98,
+          "minY": 88,
+          "rot": 0,
+          "w": 52,
+          "h": 52,
+          "zHeight": 84,
+          "visible": true
+        },
+        "plant": {
+          "minX": 8,
+          "minY": 14,
+          "rot": 0,
+          "w": 40,
+          "h": 40,
+          "zHeight": 112,
+          "visible": true
+        },
+        "divider": {
+          "cx": 190,
+          "cy": 154,
+          "rot": 90,
+          "w": 150,
+          "h": 4,
+          "zHeight": 178,
+          "visible": true,
+          "foldAngles": [
+            16,
+            -20,
+            16
+          ]
+        },
+        "shelf": {
+          "minX": 0,
+          "minY": 120,
+          "rot": 270,
+          "w": 120,
+          "h": 36,
+          "zHeight": 175,
+          "visible": true
+        },
+        "wardrobe": {
+          "minX": 256,
+          "minY": 324,
+          "rot": 180,
+          "w": 150,
+          "h": 56,
+          "zHeight": 205,
+          "visible": true
+        },
+        "mirror": {
+          "minX": 2,
+          "minY": 260,
+          "rot": 90,
+          "w": 55,
+          "h": 8,
+          "zHeight": 165,
+          "visible": true
+        }
+      }
+    }
+  ],
+  "layers": [
+    {
+      "id": "A-FLOR-SLAB",
+      "name": "Floor Slab & Grid",
+      "color": "#28425d",
+      "lineWeightMm": 0.25,
+      "lineType": "solid",
+      "visible": true,
+      "locked": false,
+      "printable": true,
+      "zOrder": 0
+    },
+    {
+      "id": "A-WALL-EXTR",
+      "name": "Exterior Walls",
+      "color": "#EAE7DF",
+      "lineWeightMm": 0.7,
+      "lineType": "solid",
+      "visible": true,
+      "locked": false,
+      "printable": true,
+      "zOrder": 10
+    },
+    {
+      "id": "A-WALL-INTR",
+      "name": "Interior Partitions",
+      "color": "#b0aca2",
+      "lineWeightMm": 0.5,
+      "lineType": "solid",
+      "visible": true,
+      "locked": false,
+      "printable": true,
+      "zOrder": 15
+    },
+    {
+      "id": "A-DOOR",
+      "name": "Doors & Swings",
+      "color": "#c8a96e",
+      "lineWeightMm": 0.25,
+      "lineType": "solid",
+      "visible": true,
+      "locked": false,
+      "printable": true,
+      "zOrder": 20
+    },
+    {
+      "id": "A-GLAZ",
+      "name": "Windows & Glazing",
+      "color": "#5a8cb2",
+      "lineWeightMm": 0.25,
+      "lineType": "solid",
+      "visible": true,
+      "locked": false,
+      "printable": true,
+      "zOrder": 25
+    },
+    {
+      "id": "A-FURN",
+      "name": "Furniture & Fixtures",
+      "color": "#d99b26",
+      "lineWeightMm": 0.25,
+      "lineType": "solid",
+      "visible": true,
+      "locked": false,
+      "printable": true,
+      "zOrder": 30
+    },
+    {
+      "id": "E-POWR",
+      "name": "Electrical & Cables",
+      "color": "#4ecdc4",
+      "lineWeightMm": 0.35,
+      "lineType": "solid",
+      "visible": true,
+      "locked": false,
+      "printable": true,
+      "zOrder": 40
+    },
+    {
+      "id": "A-ANNO-DIMS",
+      "name": "Dimension Lines",
+      "color": "#c8a96e",
+      "lineWeightMm": 0.18,
+      "lineType": "solid",
+      "visible": true,
+      "locked": false,
+      "printable": true,
+      "zOrder": 50
+    },
+    {
+      "id": "A-ANNO-TEXT",
+      "name": "Room Stamps & Labels",
+      "color": "#EAE7DF",
+      "lineWeightMm": 0.25,
+      "lineType": "solid",
+      "visible": true,
+      "locked": false,
+      "printable": true,
+      "zOrder": 60
+    },
+    {
+      "id": "A-CLG-GRID",
+      "name": "Reflected Ceiling",
+      "color": "#505565",
+      "lineWeightMm": 0.13,
+      "lineType": "dashed",
+      "visible": true,
+      "locked": false,
+      "printable": true,
+      "zOrder": 70
+    }
+  ],
+  "buildings": [
+    {
+      "id": "bldg-studio",
+      "name": "Residential Pavilion",
+      "storeys": [
+        {
+          "id": "lvl-0",
+          "name": "Studio Floor (Level 0)",
+          "index": 0,
+          "elevationZ": 0,
+          "storyHeight": 280,
+          "slabThickness": 20,
+          "wallGraph": {
+            "nodes": [
+              {
+                "id": "node-tl",
+                "x": 0,
+                "y": 0
+              },
+              {
+                "id": "node-tr",
+                "x": 440,
+                "y": 0
+              },
+              {
+                "id": "node-br",
+                "x": 440,
+                "y": 380
+              },
+              {
+                "id": "node-bl",
+                "x": 0,
+                "y": 380
+              }
+            ],
+            "segments": [
+              {
+                "id": "wall-top",
+                "startNodeId": "node-tl",
+                "endNodeId": "node-tr",
+                "thickness": 14,
+                "height": 280,
+                "type": "exterior",
+                "material": "brick_cavity",
+                "layerId": "A-WALL-EXTR",
+                "loadBearing": true
+              },
+              {
+                "id": "wall-right",
+                "startNodeId": "node-tr",
+                "endNodeId": "node-br",
+                "thickness": 14,
+                "height": 280,
+                "type": "exterior",
+                "material": "brick_cavity",
+                "layerId": "A-WALL-EXTR",
+                "loadBearing": true
+              },
+              {
+                "id": "wall-bottom",
+                "startNodeId": "node-br",
+                "endNodeId": "node-bl",
+                "thickness": 14,
+                "height": 280,
+                "type": "exterior",
+                "material": "brick_cavity",
+                "layerId": "A-WALL-EXTR",
+                "loadBearing": true
+              },
+              {
+                "id": "wall-left",
+                "startNodeId": "node-bl",
+                "endNodeId": "node-tl",
+                "thickness": 14,
+                "height": 280,
+                "type": "exterior",
+                "material": "brick_cavity",
+                "layerId": "A-WALL-EXTR",
+                "loadBearing": true
+              }
+            ]
+          },
+          "spaces": [
+            {
+              "id": "space-main",
+              "name": "Studio Bedroom Suite",
+              "number": "101",
+              "boundarySegmentIds": [
+                "wall-top",
+                "wall-right",
+                "wall-bottom",
+                "wall-left"
+              ],
+              "polygon": [
+                {
+                  "x": 0,
+                  "y": 0
+                },
+                {
+                  "x": 440,
+                  "y": 0
+                },
+                {
+                  "x": 440,
+                  "y": 380
+                },
+                {
+                  "x": 0,
+                  "y": 380
+                }
+              ],
+              "areaM2": 16.72,
+              "perimeterM": 16.4,
+              "centroid": {
+                "x": 220,
+                "y": 190
+              },
+              "floorMaterial": "herringbone_parquet",
+              "fillColor": "#121316"
+            }
+          ],
+          "openings": [
+            {
+              "id": "door-1",
+              "wallSegmentId": "wall-bottom",
+              "t": 0.1659,
+              "width": 90,
+              "height": 210,
+              "sillHeight": 0,
+              "type": "door_single_swing",
+              "hinge": "left",
+              "swing": "inward",
+              "swingAngleDeg": 90
+            },
+            {
+              "id": "win-1",
+              "wallSegmentId": "wall-top",
+              "t": 0.2807,
+              "width": 175,
+              "height": 140,
+              "sillHeight": 90,
+              "type": "window_casement",
+              "hinge": "left",
+              "swing": "outward",
+              "swingAngleDeg": 45,
+              "glazing": {
+                "paneCount": 2,
+                "mullionThicknessCm": 4,
+                "glassTint": "#5a8cb2"
+              }
+            }
+          ],
+          "furniture": [
+            {
+              "id": "rug",
+              "name": "Area Rug",
+              "archetype": "rug",
+              "layerId": "A-FURN",
+              "spaceId": "space-main",
+              "x": 320,
+              "y": 158,
+              "z": 0,
+              "rotation": 0,
+              "w": 228,
+              "h": 204,
+              "zHeight": 1,
+              "color": "violet",
+              "ignoreCollision": true,
+              "lockedDims": false,
+              "visible": true
+            },
+            {
+              "id": "bed",
+              "name": "Queen Bed",
+              "archetype": "bed",
+              "layerId": "A-FURN",
+              "spaceId": "space-main",
+              "x": 340,
+              "y": 149.5,
+              "z": 0,
+              "rotation": 180,
+              "w": 200,
+              "h": 155,
+              "zHeight": 46,
+              "color": "zinc",
+              "ignoreCollision": false,
+              "lockedDims": false,
+              "visible": true
+            },
+            {
+              "id": "ns1",
+              "name": "Nightstand N",
+              "archetype": "nightstand",
+              "layerId": "A-FURN",
+              "spaceId": "space-main",
+              "x": 417,
+              "y": 41,
+              "z": 0,
+              "rotation": 270,
+              "w": 46,
+              "h": 42,
+              "zHeight": 54,
+              "color": "amber",
+              "ignoreCollision": false,
+              "lockedDims": false,
+              "visible": true
+            },
+            {
+              "id": "ns2",
+              "name": "Nightstand S",
+              "archetype": "nightstand",
+              "layerId": "A-FURN",
+              "spaceId": "space-main",
+              "x": 417,
+              "y": 257,
+              "z": 0,
+              "rotation": 270,
+              "w": 46,
+              "h": 42,
+              "zHeight": 54,
+              "color": "amber",
+              "ignoreCollision": false,
+              "lockedDims": false,
+              "visible": true
+            },
+            {
+              "id": "lamp",
+              "name": "Floor Lamp",
+              "archetype": "lamp",
+              "layerId": "A-FURN",
+              "spaceId": "space-main",
+              "x": 350,
+              "y": 36,
+              "z": 0,
+              "rotation": 0,
+              "w": 36,
+              "h": 36,
+              "zHeight": 162,
+              "color": "amber",
+              "ignoreCollision": false,
+              "lockedDims": false,
+              "visible": true
+            },
+            {
+              "id": "desk",
+              "name": "Oak Desk",
+              "archetype": "desk",
+              "layerId": "A-FURN",
+              "spaceId": "space-main",
+              "x": 124,
+              "y": 46,
+              "z": 0,
+              "rotation": 0,
+              "w": 140,
+              "h": 64,
+              "zHeight": 75,
+              "color": "zinc",
+              "ignoreCollision": false,
+              "lockedDims": false,
+              "visible": true
+            },
+            {
+              "id": "chair",
+              "name": "Studio Chair",
+              "archetype": "chair",
+              "layerId": "A-FURN",
+              "spaceId": "space-main",
+              "x": 124,
+              "y": 114,
+              "z": 0,
+              "rotation": 0,
+              "w": 52,
+              "h": 52,
+              "zHeight": 84,
+              "color": "amber",
+              "ignoreCollision": false,
+              "lockedDims": false,
+              "visible": true
+            },
+            {
+              "id": "plant",
+              "name": "Ficus Plant",
+              "archetype": "plant",
+              "layerId": "A-FURN",
+              "spaceId": "space-main",
+              "x": 28,
+              "y": 34,
+              "z": 0,
+              "rotation": 0,
+              "w": 40,
+              "h": 40,
+              "zHeight": 112,
+              "color": "emerald",
+              "ignoreCollision": false,
+              "lockedDims": false,
+              "visible": true
+            },
+            {
+              "id": "divider",
+              "name": "Folding Screen",
+              "archetype": "divider",
+              "layerId": "A-FURN",
+              "spaceId": "space-main",
+              "x": 190,
+              "y": 154,
+              "z": 0,
+              "rotation": 90,
+              "w": 150,
+              "h": 4,
+              "zHeight": 178,
+              "color": "zinc",
+              "ignoreCollision": false,
+              "lockedDims": false,
+              "visible": true
+            },
+            {
+              "id": "shelf",
+              "name": "Bookcase",
+              "archetype": "shelf",
+              "layerId": "A-FURN",
+              "spaceId": "space-main",
+              "x": 60,
+              "y": 138,
+              "z": 0,
+              "rotation": 270,
+              "w": 120,
+              "h": 36,
+              "zHeight": 175,
+              "color": "zinc",
+              "ignoreCollision": false,
+              "lockedDims": false,
+              "visible": true
+            },
+            {
+              "id": "wardrobe",
+              "name": "Wardrobe",
+              "archetype": "wardrobe",
+              "layerId": "A-FURN",
+              "spaceId": "space-main",
+              "x": 331,
+              "y": 352,
+              "z": 0,
+              "rotation": 180,
+              "w": 150,
+              "h": 56,
+              "zHeight": 205,
+              "color": "zinc",
+              "ignoreCollision": false,
+              "lockedDims": false,
+              "visible": true
+            },
+            {
+              "id": "mirror",
+              "name": "Vanity Mirror",
+              "archetype": "mirror",
+              "layerId": "A-FURN",
+              "spaceId": "space-main",
+              "x": 29.5,
+              "y": 264,
+              "z": 0,
+              "rotation": 90,
+              "w": 55,
+              "h": 8,
+              "zHeight": 165,
+              "color": "sky",
+              "ignoreCollision": false,
+              "lockedDims": false,
+              "visible": true
+            }
+          ],
+          "cables": [
+            {
+              "id": "cable-demo",
+              "name": "Power Line (Desk to T1)",
+              "fromId": "desk",
+              "toId": "T1",
+              "maxMeters": 4.5,
+              "warnMeters": 3.8,
+              "routingMode": "wall",
+              "color": "#6e9887",
+              "visible": true,
+              "layerId": "E-POWR"
+            }
+          ],
+          "annotations": [
+            {
+              "id": "anno-T1",
+              "layerId": "E-POWR",
+              "type": "leader_text",
+              "x1": 290,
+              "y1": 0,
+              "text": "T1",
+              "fontSizePx": 12
+            },
+            {
+              "id": "anno-T2",
+              "layerId": "E-POWR",
+              "type": "leader_text",
+              "x1": 440,
+              "y1": 165,
+              "text": "T2",
+              "fontSizePx": 12
+            },
+            {
+              "id": "anno-T3",
+              "layerId": "E-POWR",
+              "type": "leader_text",
+              "x1": 0,
+              "y1": 110,
+              "text": "T3",
+              "fontSizePx": 12
+            },
+            {
+              "id": "anno-T4",
+              "layerId": "E-POWR",
+              "type": "leader_text",
+              "x1": 215,
+              "y1": 380,
+              "text": "T4",
+              "fontSizePx": 12
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
