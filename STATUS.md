@@ -24,7 +24,7 @@
 - Instalador NSIS recompilado a partir desse executável; os ficheiros fonte permaneceram iguais entre a compilação, o teste e o empacotamento.
 
 ## Próximo passo
-Fundir o PR apenas com o OK do Duarte, pelo processo de merge da máquina. O [alerta glib](https://github.com/duartelcunha/SimpleCAD/security/dependabot/1) continua aberto na main: a dependência foi removida neste ramo, sem ocultar o alerta. Confirmar o estado no GitHub depois do merge.
+As correções já foram enviadas. O PR continua em rascunho e ainda tem a descrição da recuperação; falta atualizar essa apresentação, bloqueada pela sessão atual, antes de pedir o merge. Fundir apenas com o OK do Duarte, pelo processo de merge da máquina. O [alerta glib](https://github.com/duartelcunha/SimpleCAD/security/dependabot/1) continua aberto na main: a dependência foi removida neste ramo, sem ocultar o alerta. Confirmar o estado no GitHub depois do merge.
 
 ## Decisões e limites
 - O editor continua a ter uma divisão retangular. Edifícios, pisos, camadas e paredes interiores dos documentos e exemplos v3 são propostas.
