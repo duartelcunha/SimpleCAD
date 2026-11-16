@@ -2,7 +2,7 @@
 
 **Em uma frase:** planear a disposição dos móveis de um quarto, em 2D e 3D, sem depender de serviços externos.
 
-**Estado:** recuperação e limpeza verificadas; a preparar o PR de retoma.
+**Estado:** recuperação e limpeza verificadas e gravadas no ramo; envio bloqueado pelo guarda.
 
 **Última atualização:** 2026-11-16, Codex.
 
@@ -20,7 +20,10 @@
 - Revisão independente sem defeitos materiais na recuperação; o relatório sintético antigo foi regenerado com avisos corretos e excluído do Git.
 
 ## Próximo passo
-Rever o conjunto maior de alterações do motor herdadas do Antigravity antes de fundir. Este PR de retoma preserva esse trabalho; a revisão desta tarefa cobriu a recuperação e a limpeza.
+Aprovar em modo manual o envio do ramo e a criação do PR em rascunho. Depois, rever o conjunto maior de alterações do motor herdadas do Antigravity antes de fundir; a revisão desta tarefa cobriu a recuperação e a limpeza.
+
+## Bloqueio
+O guarda da máquina recusou o envio ao interpretar o comando de autenticação do Git como uma operação proibida. Não foi contornado. O trabalho está gravado localmente; não existe PR nem publicação desta recuperação.
 
 ## Decisões e limites
 - Preservar o trabalho herdado e distinguir propostas de funções implementadas.
