@@ -5,6 +5,8 @@ native/target/
 *.pdb
 *.log
 /benchmarks/benchmark-results.json
+/node_modules/
+/.test-results/
 
 # OS & editor files
 .DS_Store

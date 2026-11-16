@@ -6,6 +6,9 @@
 
   const STORAGE_KEY = 'simplecad_project_v5';
   const MAX_HISTORY = 50;
+  const IS_PREVIEW = new URLSearchParams(window.location.search).get('pure') === '1';
+  let storageWarning = '';
+  let preserveSavedProject = false;
 
   // =========================================================================
   // 1. STATE & HISTORY
@@ -36,7 +39,8 @@
     editingCableId: null,
     pendingModalPhoto: null,
     cableAnimRaf: null,
-    activeAnimRaf: null
+    activeAnimRaf: null,
+    activeAnimFinish: null
   };
 
   const history = {
@@ -121,6 +125,10 @@
       cancelAnimationFrame(state.activeAnimRaf);
       state.activeAnimRaf = null;
     }
+    // Commit the destination before another action or history snapshot interrupts motion.
+    const finish = state.activeAnimFinish;
+    state.activeAnimFinish = null;
+    if (finish) finish();
   }
 
   /**
@@ -134,6 +142,10 @@
       if (onComplete) onComplete();
       return;
     }
+    state.activeAnimFinish = () => {
+      onTick(1);
+      if (onComplete) onComplete();
+    };
     const start = performance.now();
     const step = (now) => {
       const raw = Math.min(1, (now - start) / durationMs);
@@ -145,6 +157,7 @@
         state.activeAnimRaf = requestAnimationFrame(step);
       } else {
         state.activeAnimRaf = null;
+        state.activeAnimFinish = null;
         if (onComplete) onComplete();
       }
     };
@@ -159,17 +172,19 @@
   }
 
   function showToast(msg) {
-    srStatus.textContent = msg;
-    toastEl.textContent = msg;
+    const message = storageWarning && msg !== storageWarning ? `${msg} · ${storageWarning}` : msg;
+    srStatus.textContent = message;
+    toastEl.textContent = message;
     toastEl.classList.remove('hidden');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
+    if (!storageWarning) toastTimer = setTimeout(() => {
       toastEl.classList.add('hidden');
     }, 2400);
   }
 
   function getPaletteColor(colorKey) {
-    return window.COLOR_PALETTE[colorKey] || window.COLOR_PALETTE.zinc;
+    return Object.prototype.hasOwnProperty.call(window.COLOR_PALETTE, colorKey)
+      ? window.COLOR_PALETTE[colorKey] : window.COLOR_PALETTE.zinc;
   }
 
   // =========================================================================
@@ -226,9 +241,11 @@
     state.snapGuides = [];
     saveState();
     syncUI();
+    if (storageWarning) showToast(storageWarning);
   }
 
   function snapshotProjectData() {
+    cancelActiveAnim();
     return {
       version: 2,
       app: 'SimpleCAD',
@@ -244,13 +261,21 @@
     };
   }
 
-  function restoreFromSnapshot(snap) {
+  function applyProjectState(snap) {
+    cancelActiveAnim();
     state.room = deepClone(snap.room);
     state.cables = deepClone(snap.cables);
     state.items = deepClone(snap.items);
     state.layouts = deepClone(snap.layouts);
     state.activeLayoutId = snap.activeLayoutId;
     state.selectedId = snap.selectedId;
+    state.gridStep = snap.gridStep;
+    state.wallSnap = snap.wallSnap;
+    state.style3d = snap.style3d;
+  }
+
+  function restoreFromSnapshot(snap) {
+    applyProjectState(snap);
     saveState();
     syncUI();
   }
@@ -289,10 +314,16 @@
   }
 
   function saveState() {
+    if (IS_PREVIEW || preserveSavedProject) return false;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshotProjectData()));
+      if (storageWarning) toastEl.classList.add('hidden');
+      storageWarning = '';
+      return true;
     } catch (_) {
-      // Ignore storage quota errors cleanly
+      storageWarning = 'Não foi possível guardar neste dispositivo. Exporta o projeto em JSON antes de fechar.';
+      showToast(storageWarning);
+      return false;
     }
   }
 
@@ -301,21 +332,28 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return false;
       const parsed = JSON.parse(raw);
-      if (!parsed || !parsed.room || !Array.isArray(parsed.items)) return false;
-
-      state.room = parsed.room;
-      state.cables = Array.isArray(parsed.cables) ? parsed.cables : [];
-      state.items = parsed.items;
-      state.layouts = Array.isArray(parsed.layouts) && parsed.layouts.length
-        ? parsed.layouts
-        : deepClone(window.DEFAULT_PROJECT.layouts);
-      state.activeLayoutId = parsed.activeLayoutId || state.layouts[0].id;
-      state.selectedId = parsed.selectedId || (state.items[0] ? state.items[0].id : null);
-      state.gridStep = typeof parsed.gridStep === 'number' ? parsed.gridStep : 5;
-      state.wallSnap = typeof parsed.wallSnap === 'boolean' ? parsed.wallSnap : true;
-      state.style3d = parsed.style3d === 'sketch' ? 'sketch' : 'solid';
+      window.SimpleCADProjectData.assertCompatible(parsed);
+      const layouts = Array.isArray(parsed.layouts) && parsed.layouts.length === 0
+        ? [{ id: 'imported', name: 'Importado', placements: {} }]
+        : (parsed.layouts ?? deepClone(window.DEFAULT_PROJECT.layouts));
+      const candidate = {
+        ...parsed,
+        cables: parsed.cables ?? [],
+        layouts,
+        activeLayoutId: Array.isArray(layouts) && layouts.some(layout => layout?.id === parsed.activeLayoutId)
+          ? parsed.activeLayoutId : layouts[0]?.id,
+        selectedId: parsed.items?.some(item => item?.id === parsed.selectedId)
+          ? parsed.selectedId : (parsed.items?.[0]?.id ?? null),
+        gridStep: parsed.gridStep ?? 5,
+        wallSnap: parsed.wallSnap ?? true,
+        style3d: parsed.style3d ?? 'solid'
+      };
+      window.SimpleCADProjectData.validate(candidate);
+      applyProjectState(candidate);
       return true;
     } catch (_) {
+      preserveSavedProject = true;
+      storageWarning = 'O projeto guardado não pôde ser aberto e foi preservado. Importa uma cópia válida ou repõe o projeto demo para voltar a guardar.';
       return false;
     }
   }
@@ -949,15 +987,18 @@
     if (handle.includes('s')) { dH = projV; signV = 1; }
     if (handle.includes('n')) { dH = -projV; signV = -1; }
 
-    if (preserveAspect && signU !== 0 && signV !== 0 && startItem.w > 0) {
-      const ratio = startItem.h / startItem.w;
-      if (Math.abs(dW) >= Math.abs(dH)) dH = dW * ratio;
-      else dW = dH / ratio;
-    }
-
     const snapInc = state.gridStep > 0 ? state.gridStep : 1;
-    let newW = Math.max(10, Math.min(600, Math.round((startItem.w + dW) / snapInc) * snapInc));
-    let newH = Math.max(4, Math.min(600, Math.round((startItem.h + dH) / snapInc) * snapInc));
+    let newW = signU ? Math.max(4, Math.min(600, Math.round((startItem.w + dW) / snapInc) * snapInc)) : startItem.w;
+    let newH = signV ? Math.max(4, Math.min(600, Math.round((startItem.h + dH) / snapInc) * snapInc)) : startItem.h;
+    if (preserveAspect && signU && signV) {
+      // Snap one axis, then derive both dimensions from a single bounded scale.
+      const scale = Math.abs(dW / startItem.w) >= Math.abs(dH / startItem.h)
+        ? newW / startItem.w : newH / startItem.h;
+      const boundedScale = Math.max(Math.max(4 / startItem.w, 4 / startItem.h),
+        Math.min(Math.min(600 / startItem.w, 600 / startItem.h), scale));
+      newW = startItem.w * boundedScale;
+      newH = startItem.h * boundedScale;
+    }
 
     const actualDW = signU !== 0 ? (newW - startItem.w) : 0;
     const actualDH = signV !== 0 ? (newH - startItem.h) : 0;
@@ -968,11 +1009,8 @@
 
     item.w = newW;
     item.h = newH;
-    item.x = Number((startItem.x + shiftU * ux + shiftV * vx).toFixed(1));
-    item.y = Number((startItem.y + shiftU * uy + shiftV * vy).toFixed(1));
-    if ((Math.round(item.rot || 0) % 90) === 0) {
-      roundItemCornerToCm(item);
-    }
+    item.x = startItem.x + shiftU * ux + shiftV * vx;
+    item.y = startItem.y + shiftU * uy + shiftV * vy;
   }
 
   // =========================================================================
@@ -1204,6 +1242,7 @@
   }
 
   function drawSceneToContext(targetCtx, widthPx, heightPx, targetView, theme = 'dark') {
+    const isInteractive = targetCtx === ctx;
     const isSketch = theme === 'sketch';
     const isBlueprint = theme === 'blueprint';
     const isLight = isBlueprint || isSketch;
@@ -1556,7 +1595,7 @@
     targetCtx.restore();
 
     // Architectural Drawing Stamp & Room Area Stamp (Bottom-Left)
-    if (!isBlueprint) {
+    if (!isBlueprint && isInteractive) {
       const hasHudBottomReadout = (targetCtx === ctx) && !document.body.classList.contains('pure-cad');
       const stampX = 16;
       const stampH = 52;
@@ -1600,8 +1639,8 @@
 
     // Draw Rugs / Ignore-Collision Layer First, Then Normal Items, Selected On Top
     const ordered = [...state.items].sort((a, b) => {
-      if (a.id === state.selectedId) return 1;
-      if (b.id === state.selectedId) return -1;
+      if (isInteractive && a.id === state.selectedId) return 1;
+      if (isInteractive && b.id === state.selectedId) return -1;
       if (a.ignoreCollision !== b.ignoreCollision) return a.ignoreCollision ? -1 : 1;
       return 0;
     });
@@ -1610,12 +1649,12 @@
     if (isCableMode) targetCtx.globalAlpha = 0.24;
     for (const item of ordered) {
       if (!item.visible) continue;
-      drawFurnitureItem(targetCtx, item, mapScreen, s, item.id === state.selectedId && !isBlueprint && !isCableMode, collisions.has(item.id), styleMode);
+      drawFurnitureItem(targetCtx, item, mapScreen, s, isInteractive && item.id === state.selectedId && !isBlueprint && !isCableMode, collisions.has(item.id), styleMode);
     }
     targetCtx.restore();
 
     // Selected Item Guides & Direct Handles (only in live interactive viewport)
-    if (!isBlueprint && !isCableMode) {
+    if (isInteractive && !isBlueprint && !isCableMode) {
       const sel = state.items.find(i => i.id === state.selectedId && i.visible);
       if (sel) {
         drawClearanceGuides(targetCtx, sel, mapScreen, styleMode);
@@ -1651,7 +1690,7 @@
     }
 
     // Measure Tool Overlay
-    if (!isBlueprint && state.measurePts.length > 0) {
+    if (isInteractive && !isBlueprint && state.measurePts.length > 0) {
       drawMeasureOverlay(targetCtx, mapScreen, styleMode);
     }
   }
@@ -1859,6 +1898,7 @@
   }
 
   function drawScene3D(targetCtx, widthPx, heightPx) {
+    const isInteractive = targetCtx === ctx;
     const isSketch = state.style3d === 'sketch';
     targetCtx.fillStyle = isSketch ? '#f4f1ea' : '#0d0e10';
     targetCtx.fillRect(0, 0, widthPx, heightPx);
@@ -1982,8 +2022,10 @@
     const prisms = [];
     const cutawayQuads = [];
     const itemLabelsMap = new Map();
-    state.hitRegions3D = [];
-    state.handleHits3D = [];
+    if (isInteractive) {
+      state.hitRegions3D = [];
+      state.handleHits3D = [];
+    }
 
     const drawQuadList = (list) => {
       for (const q of list) {
@@ -2653,7 +2695,7 @@
     const { bad: collisions } = computeCollisions();
     for (const item of state.items) {
       if (!item.visible) continue;
-      const isSel = item.id === state.selectedId;
+      const isSel = isInteractive && item.id === state.selectedId;
       const isBad = collisions.has(item.id);
       sketchItemFlags.set(item.id, { isBad, isSel });
       const baseRgb = RGB_3D_PALETTE[item.color] || RGB_3D_PALETTE.zinc;
@@ -2729,11 +2771,13 @@
           }
         } else {
           const m = 3.5;
+          const hw = item.w * 0.5;
+          const hh = item.h * 0.5;
           const shadowPoly = [
-            { x: -m, y: -m },
-            { x: item.w + m, y: -m },
-            { x: item.w + m, y: item.h + m },
-            { x: -m, y: item.h + m }
+            { x: -hw - m, y: -hh - m },
+            { x: hw + m, y: -hh - m },
+            { x: hw + m, y: hh + m },
+            { x: -hw - m, y: hh + m }
           ].map(pt => ({
             x: item.x + pt.x * cos - pt.y * sin,
             y: item.y + pt.x * sin + pt.y * cos,
@@ -2750,7 +2794,7 @@
     floorQuads.sort((a, b) => a.depth - b.depth);
     drawQuadList(floorQuads);
     for (const q of floorQuads) {
-      if (q.itemId) state.hitRegions3D.push({ itemId: q.itemId, pts: q.pts });
+      if (isInteractive && q.itemId) state.hitRegions3D.push({ itemId: q.itemId, pts: q.pts });
     }
 
     // Pass 2: Back Walls, Baseboards & Windows
@@ -2888,7 +2932,7 @@
         drawSketchPrismDetail(pr.sketchMeta);
       }
       for (const f of pr.faces) {
-        if (f.itemId) state.hitRegions3D.push({ itemId: f.itemId, pts: f.pts });
+        if (isInteractive && f.itemId) state.hitRegions3D.push({ itemId: f.itemId, pts: f.pts });
       }
       if (pr.itemId && lastPrismForItem.get(pr.itemId) === idx) {
         const cage = isSketch ? sketchCages.get(pr.itemId) : null;
@@ -2949,7 +2993,7 @@
 
     // 5. Selected Divider 3D Draggable Hinge Nodes (matches 2D fold-node articulation)
     const selItem3D = state.items.find(it => it.id === state.selectedId);
-    if (selItem3D && selItem3D.visible && selItem3D.type === 'divider') {
+    if (isInteractive && selItem3D && selItem3D.visible && selItem3D.type === 'divider') {
       const geom = getDividerGeometry(selItem3D);
       const zH = Math.max(1, Number(selItem3D.zHeight) || 180);
       geom.nodes.forEach((pt, idx) => {
@@ -3858,7 +3902,7 @@
         interaction.pinchStartPan = state.viewMode === '3d'
           ? { x: state.cam3d.panX, y: state.cam3d.panY }
           : { x: state.panX, y: state.panY };
-        interaction.beforeSnapshot = null;
+        // Keep a pending edit until all pointers finish, including a drag-to-pinch transition.
         return;
       }
 
@@ -4505,6 +4549,7 @@
   }
 
   function saveCurrentAsLayout(name) {
+    pushUndoSnapshot();
     const placements = {};
     for (const item of state.items) {
       const box = getAABB(item);
@@ -4539,7 +4584,7 @@
 
   function deleteActiveCustomLayout() {
     const layout = state.layouts.find(l => l.id === state.activeLayoutId);
-    if (!layout || layout.builtIn) return;
+    if (!layout || layout.builtIn || state.layouts.length <= 1) return;
     pushUndoSnapshot();
     state.layouts = state.layouts.filter(l => l.id !== layout.id);
     state.activeLayoutId = state.layouts[0].id;
@@ -4709,76 +4754,91 @@
   function applyImportedJson(rawText) {
     const fb = document.getElementById('json-feedback');
     try {
-      const parsed = JSON.parse(rawText);
-      if (!parsed || typeof parsed !== 'object') throw new Error('JSON não é um objeto válido.');
-
-      pushUndoSnapshot();
+      const input = JSON.parse(rawText);
+      const parsed = Array.isArray(input) ? { items: input } : input;
+      window.SimpleCADProjectData.assertCompatible(parsed);
+      const candidate = snapshotProjectData();
+      for (const key of ['items', 'furniture', 'catalog', 'cables', 'layouts']) {
+        if (Object.prototype.hasOwnProperty.call(parsed, key) && !Array.isArray(parsed[key])) {
+          throw new Error('O ficheiro contém uma lista inválida de móveis, cabos ou disposições.');
+        }
+        if (parsed[key]?.some(entry => !entry || typeof entry !== 'object' || Array.isArray(entry))) {
+          throw new Error('O ficheiro contém um móvel, cabo ou disposição inválidos.');
+        }
+      }
 
       // Support both full V2 schema and simple V1 array/items export
-      if (parsed.room && typeof parsed.room.w === 'number' && typeof parsed.room.h === 'number') {
-        state.room = {
+      if (Object.prototype.hasOwnProperty.call(parsed, 'room')) {
+        if (!parsed.room || typeof parsed.room !== 'object' || Array.isArray(parsed.room)) throw new Error('Quarto inválido.');
+        candidate.room = {
           name: String(parsed.room.name || 'Quarto').slice(0, 60),
-          w: Math.max(100, Math.min(2000, Number(parsed.room.w))),
-          h: Math.max(100, Math.min(2000, Number(parsed.room.h))),
-          wallThickness: Number(parsed.room.wallThickness) || 14,
-          doors: Array.isArray(parsed.room.doors) ? parsed.room.doors : state.room.doors,
-          windows: Array.isArray(parsed.room.windows) ? parsed.room.windows : state.room.windows,
-          outlets: Array.isArray(parsed.room.outlets) ? parsed.room.outlets : state.room.outlets
+          w: Number(parsed.room.w),
+          h: Number(parsed.room.h),
+          wallThickness: Number(parsed.room.wallThickness ?? 14),
+          doors: parsed.room.doors === undefined ? candidate.room.doors : parsed.room.doors,
+          windows: parsed.room.windows === undefined ? candidate.room.windows : parsed.room.windows,
+          outlets: parsed.room.outlets === undefined ? candidate.room.outlets : parsed.room.outlets
         };
       }
 
       if (Array.isArray(parsed.cables)) {
-        state.cables = parsed.cables.map(c => ({
+        candidate.cables = parsed.cables.map(c => ({
           id: String(c.id || uid('cable')),
           name: String(c.name || 'Cabo').slice(0, 50),
           fromId: String(c.fromId || ''),
           toId: String(c.toId || ''),
-          maxMeters: Math.max(0.3, Math.min(50, Number(c.maxMeters) || 3.0)),
-          warnMeters: Number(c.warnMeters) || (Number(c.maxMeters) || 3.0) * 0.85,
-          routingMode: c.routingMode === 'wall' ? 'wall' : 'direct',
+          maxMeters: Number(c.maxMeters ?? 3.0),
+          warnMeters: Number(c.warnMeters ?? Number(c.maxMeters ?? 3.0) * 0.85),
+          routingMode: c.routingMode ?? 'direct',
+          ...(c.color === undefined ? {} : { color: c.color }),
           visible: c.visible !== false
         }));
       }
 
-      if (Array.isArray(parsed.layouts) && parsed.layouts.length > 0) {
-        state.layouts = parsed.layouts;
-        state.activeLayoutId = (parsed.activeLayoutId && state.layouts.some(l => l.id === parsed.activeLayoutId))
+      if (Array.isArray(parsed.layouts)) {
+        candidate.layouts = parsed.layouts.length ? parsed.layouts : [{ id: 'imported', name: 'Importado', placements: {} }];
+        candidate.activeLayoutId = (parsed.activeLayoutId && candidate.layouts.some(l => l.id === parsed.activeLayoutId))
           ? parsed.activeLayoutId
-          : state.layouts[0].id;
+          : candidate.layouts[0]?.id;
       }
 
       const rawItems = Array.isArray(parsed.items) ? parsed.items : (Array.isArray(parsed.furniture) ? parsed.furniture : null);
       if (rawItems) {
-        state.items = rawItems.map(it => {
+        candidate.items = rawItems.map(it => {
           const itemType = String(it.type || 'box');
           return {
             id: String(it.id || uid('item')),
             name: String(it.name || it.nome || 'Móvel').slice(0, 60),
             type: itemType,
-            w: Math.max(4, Math.min(600, Number(it.w ?? it.width ?? 60))),
-            h: Math.max(4, Math.min(600, Number(it.h ?? it.depth ?? 45))),
-            zHeight: Math.max(1, Math.min(350, Number(it.zHeight ?? 75))),
+            w: Number(it.w ?? it.width ?? 60),
+            h: Number(it.h ?? it.depth ?? 45),
+            zHeight: Number(it.zHeight ?? 75),
             x: Number(it.cx ?? it.x ?? 60),
             y: Number(it.cy ?? it.y ?? 60),
             rot: Number(it.rot ?? it.rotation ?? 0),
-            foldAngles: itemType === 'divider' ? sanitizeFoldAngles(it.foldAngles) : undefined,
-            color: window.COLOR_PALETTE[it.color] ? it.color : 'zinc',
+            foldAngles: itemType === 'divider' ? (it.foldAngles ?? [0, 0, 0]) : undefined,
+            color: Object.prototype.hasOwnProperty.call(window.COLOR_PALETTE, it.color) ? it.color : 'zinc',
             ignoreCollision: Boolean(it.ignoreCollision),
             lockedDims: Boolean(it.lockedDims),
             visible: it.visible !== false,
             adjustable: Boolean(it.adjustable),
-            photoDataUrl: typeof it.photoDataUrl === 'string' && it.photoDataUrl.startsWith('data:image/') ? it.photoDataUrl : null
+            photoDataUrl: it.photoDataUrl ?? null
           };
         });
       } else if (Array.isArray(parsed.catalog)) {
-        const lay = state.layouts.find(l => l.id === state.activeLayoutId) || state.layouts[0] || { placements: {} };
-        state.items = buildItemsFromLayout(parsed.catalog, lay);
+        const lay = candidate.layouts.find(l => l.id === candidate.activeLayoutId) || candidate.layouts[0] || { placements: {} };
+        candidate.items = buildItemsFromLayout(parsed.catalog, lay);
       }
 
-      if (state.items.length > 0 && !state.items.some(i => i.id === state.selectedId)) {
-        state.selectedId = state.items[0].id;
+      for (const key of ['gridStep', 'wallSnap', 'style3d']) {
+        if (Object.prototype.hasOwnProperty.call(parsed, key)) candidate[key] = parsed[key];
       }
-
+      const selectedId = parsed.selectedId ?? candidate.selectedId;
+      candidate.selectedId = candidate.items.some(item => item.id === selectedId) ? selectedId : (candidate.items[0]?.id ?? null);
+      window.SimpleCADProjectData.validate(candidate);
+      pushUndoSnapshot();
+      applyProjectState(candidate);
+      preserveSavedProject = false;
       saveState();
       syncUI();
       closeDialogSafe('json-dialog');
@@ -4790,7 +4850,7 @@
 
   function exportPNG() {
     const scale = 2; // 2x Retina sharp export
-    const pad = 64;
+    const pad = Math.max(64, (Number(state.room.wallThickness) || 14) + 44);
     const wPx = Math.round((state.room.w + pad * 2) * scale);
     const hPx = Math.round((state.room.h + pad * 2 + 40) * scale);
 
@@ -4802,13 +4862,16 @@
 
     const exportView = { scale: 1, ox: pad, oy: pad };
     const exportTheme = state.style3d === 'sketch' ? 'sketch' : 'dark';
-    drawSceneToContext(octx, wPx / scale, hPx / scale, exportView, exportTheme);
+    const sceneHeight = hPx / scale - (state.viewMode === '3d' ? 32 : 0);
+    octx.fillStyle = exportTheme === 'sketch' ? '#f4f1ea' : state.viewMode === '3d' ? '#0d0e10' : '#0a0b0d';
+    octx.fillRect(0, 0, wPx / scale, hPx / scale);
+    drawSceneToContext(octx, wPx / scale, sceneHeight, exportView, exportTheme);
 
     // Architectural stamp footer
     octx.fillStyle = exportTheme === 'sketch' ? '#334155' : '#b0aca2';
     octx.font = '600 10px "JetBrains Mono", Consolas, monospace';
     octx.textAlign = 'left';
-    octx.fillText(`SimpleCAD ARCH • ${state.room.name || 'Planta'} • ${state.room.w}×${state.room.h} cm (${((state.room.w * state.room.h) / 10000).toFixed(2)} m²)`, pad, state.room.h + pad + 44);
+    octx.fillText(`SimpleCAD ARCH • ${state.room.name || 'Planta'} • ${state.room.w}×${state.room.h} cm (${((state.room.w * state.room.h) / 10000).toFixed(2)} m²)`, pad, hPx / scale - 20);
 
     const slug = (state.room.name || 'planta').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     const link = document.createElement('a');
@@ -4881,7 +4944,7 @@
     ).join('');
     laySel.value = state.activeLayoutId;
     const activeLay = state.layouts.find(l => l.id === state.activeLayoutId);
-    document.getElementById('btn-delete-layout').classList.toggle('hidden', !activeLay || activeLay.builtIn);
+    document.getElementById('btn-delete-layout').classList.toggle('hidden', !activeLay || activeLay.builtIn || state.layouts.length <= 1);
 
     // View mode segmented buttons & 3D hint
     const v2d = document.getElementById('btn-view-2d');
@@ -5610,6 +5673,7 @@
       if (await openConfirmDialog('Repor Projeto Demo', 'Isto vai restaurar o projeto demo Studio Bedroom (440×380 cm), tomadas e os layouts iniciais. Continuar?')) {
         pushUndoSnapshot();
         closeDialogSafe('json-dialog');
+        preserveSavedProject = false;
         applyDefaultProject(false);
         showToast('Projeto demo restaurado!');
       }

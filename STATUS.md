@@ -2,28 +2,32 @@
 
 **Em uma frase:** planear a disposição dos móveis de um quarto, em 2D e 3D, sem depender de serviços externos.
 
-**Estado:** recuperação e limpeza verificadas, gravadas e enviadas; PR em rascunho para revisão do trabalho herdado.
+**Estado:** motor herdado revisto e corrigido; validação concluída no browser e no executável Windows. Falta fundir o PR com o OK do Duarte.
 
 **Última atualização:** 2026-11-16, Codex.
 
 ## Onde está
-- Ramo: `chore/resume-antigravity-cleanup`; [PR #1](https://github.com/duartelcunha/SimpleCAD/pull/1), em rascunho.
-- Trabalho herdado: alterações de interface, desenho, marca, testes sintéticos e propostas que estavam por gravar no início desta tarefa; preservadas neste ramo.
-- Último pedido recuperado: verificar se o repositório ficou livre de restos antigos.
+- Ramo: `chore/resume-antigravity-cleanup`; [PR #1](https://github.com/duartelcunha/SimpleCAD/pull/1).
+- A recuperação anterior preservou o trabalho herdado e repôs a marca escolhida a partir dos originais, com ícones Windows correspondentes.
+- Pedido atual: rever o motor e corrigir os problemas encontrados, incluindo o alerta do glib.
 
-## Verificado
-- A suite sintética passa, mas não executa a aplicação.
-- Num browser isolado: abertura do projeto, adição de móvel, desfazer/refazer, alternância 2D/3D, exportação/reimportação JSON, erro de JSON inválido, persistência após recarregar e painel móvel. Sem erros de consola nessa verificação.
-- Os exemplos v3 são gerados artificialmente; a aplicação atual não preserva paredes interiores, pisos ou camadas e limita as dimensões importadas a 2000 cm.
-- A marca escolhida (conceito 2) foi recuperada dos ficheiros originais e conferida por hashes. Os ícones do Windows foram regenerados a partir do mesmo SVG.
-- Compilação Rust concluída e instalador NSIS regenerado. O instalador não foi executado; os percursos foram testados no browser, não na janela nativa.
-- Revisão independente sem defeitos materiais na recuperação; o relatório sintético antigo foi regenerado com avisos corretos e excluído do Git.
+## Corrigido e verificado
+- Importar um ficheiro inválido já não altera parcialmente o projeto nem o histórico. Valores numéricos com HTML são recusados antes de chegarem à interface. Opções e cores dos cabos sobrevivem à exportação e reimportação.
+- Ficheiros v3, estruturas não suportadas e dimensões fora dos limites são recusados; não são convertidos com perda silenciosa de informação.
+- Um arrasto seguido de pinça conserva a gravação e o desfazer. Redimensionar um lado preserva a outra dimensão; Shift conserva as proporções.
+- Interromper uma animação conserva o destino da operação e o histórico. A última disposição não pode ser apagada; projetos antigos com disposições vazias são recuperados.
+- Exportar PNG já não altera a seleção 3D nem inclui os controlos de edição. Sombras e rodapé corrigidos.
+- A pré-visualização não substitui o projeto guardado. Dados guardados ilegíveis são preservados; falhas de gravação têm aviso persistente para exportar JSON.
+- Suite permanente de browser: 20 casos passaram com a aplicação real, perfis isolados e dados fictícios. Sintaxe JavaScript e suite sintética anterior passaram. Revisão independente concluída; os problemas encontrados nessa revisão foram corrigidos e voltaram a ser testados.
+- Tao substituído por Winit; funcionalidades Unix desnecessárias do Wry desativadas. O lock já não contém glib/GTK. Compilação Rust release, Clippy e formatação passaram.
+- Executável final recompilado e usado com WebView2 numa secretária invisível: abertura, redimensionamento, edição, desfazer/refazer, 2D/3D, JSON, PNG, fecho e persistência após reiniciar passaram. Nenhum ecrã ou perfil do utilizador foi usado.
+- Instalador NSIS recompilado a partir desse executável; os ficheiros fonte permaneceram iguais entre a compilação, o teste e o empacotamento.
 
 ## Próximo passo
-Rever o conjunto maior de alterações do motor herdadas do Antigravity antes de fundir; a revisão desta tarefa cobriu a recuperação e a limpeza. O ramo está enviado; não houve merge nem publicação de executáveis.
+Fundir o PR apenas com o OK do Duarte, pelo processo de merge da máquina. O [alerta glib](https://github.com/duartelcunha/SimpleCAD/security/dependabot/1) continua aberto na main: a dependência foi removida neste ramo, sem ocultar o alerta. Confirmar o estado no GitHub depois do merge.
 
 ## Decisões e limites
-- Preservar o trabalho herdado e distinguir propostas de funções implementadas.
-- O executável e o instalador locais estão sincronizados com a fonte recuperada; publicações não foram alteradas.
-- Não se apagaram projetos, propostas nem histórico. As afirmações de funcionalidades implementadas, desempenho real e aprovações sem prova foram corrigidas.
-- O GitHub mantém um [alerta moderado no glib](https://github.com/duartelcunha/SimpleCAD/security/dependabot/1). O grafo de dependências do alvo Windows verificado não inclui glib; a atualização das dependências para os outros alvos fica pendente.
+- O editor continua a ter uma divisão retangular. Edifícios, pisos, camadas e paredes interiores dos documentos e exemplos v3 são propostas.
+- Os testes antigos e os benchmarks são sintéticos; não medem o desempenho da aplicação no browser.
+- A verificação nativa decorreu numa secretária invisível; não foi comparada visualmente com a secretária normal. O instalador não foi executado e nenhuma release foi publicada.
+- Os binários locais são ignorados pelo Git; não se apagaram projetos, propostas nem histórico.
