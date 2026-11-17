@@ -4,7 +4,10 @@ fn main() {
         let mut res = tauri_winres::WindowsResource::new();
         res.set_icon("../icon.ico")
             .set("ProductName", "SimpleCAD")
-            .set("FileDescription", "SimpleCAD — 2D & 3D Architectural Floorplan Studio")
+            .set(
+                "FileDescription",
+                "SimpleCAD — 2D & 3D Architectural Floorplan Studio",
+            )
             .set("CompanyName", "SimpleCAD")
             .set("LegalCopyright", "SimpleCAD")
             .set("OriginalFilename", "SimpleCAD.exe");

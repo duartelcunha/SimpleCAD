@@ -1,0 +1,11 @@
+{
+  "name": "simplecad",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test:browser": "node tests/browser-engine.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.60.0"
+  }
+}

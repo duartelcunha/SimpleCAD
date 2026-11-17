@@ -6,6 +6,9 @@
 
   const STORAGE_KEY = 'simplecad_project_v5';
   const MAX_HISTORY = 50;
+  const IS_PREVIEW = new URLSearchParams(window.location.search).get('pure') === '1';
+  let storageWarning = '';
+  let preserveSavedProject = false;
 
   // =========================================================================
   // 1. STATE & HISTORY
@@ -19,6 +22,7 @@
     selectedId: 'divider',
     activeTab: 'furniture',
     viewMode: '2d', // '2d' | 'cables' | '3d'
+    style3d: 'solid', // 'solid' | 'sketch'
     cam3d: { yaw: -22, pitch: 52, zoom: 0.94, panX: 0, panY: 0 },
     hitRegions3D: [],
     handleHits3D: [],
@@ -35,7 +39,8 @@
     editingCableId: null,
     pendingModalPhoto: null,
     cableAnimRaf: null,
-    activeAnimRaf: null
+    activeAnimRaf: null,
+    activeAnimFinish: null
   };
 
   const history = {
@@ -120,6 +125,10 @@
       cancelAnimationFrame(state.activeAnimRaf);
       state.activeAnimRaf = null;
     }
+    // Commit the destination before another action or history snapshot interrupts motion.
+    const finish = state.activeAnimFinish;
+    state.activeAnimFinish = null;
+    if (finish) finish();
   }
 
   /**
@@ -133,6 +142,10 @@
       if (onComplete) onComplete();
       return;
     }
+    state.activeAnimFinish = () => {
+      onTick(1);
+      if (onComplete) onComplete();
+    };
     const start = performance.now();
     const step = (now) => {
       const raw = Math.min(1, (now - start) / durationMs);
@@ -144,6 +157,7 @@
         state.activeAnimRaf = requestAnimationFrame(step);
       } else {
         state.activeAnimRaf = null;
+        state.activeAnimFinish = null;
         if (onComplete) onComplete();
       }
     };
@@ -158,17 +172,19 @@
   }
 
   function showToast(msg) {
-    srStatus.textContent = msg;
-    toastEl.textContent = msg;
+    const message = storageWarning && msg !== storageWarning ? `${msg} · ${storageWarning}` : msg;
+    srStatus.textContent = message;
+    toastEl.textContent = message;
     toastEl.classList.remove('hidden');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
+    if (!storageWarning) toastTimer = setTimeout(() => {
       toastEl.classList.add('hidden');
     }, 2400);
   }
 
   function getPaletteColor(colorKey) {
-    return window.COLOR_PALETTE[colorKey] || window.COLOR_PALETTE.zinc;
+    return Object.prototype.hasOwnProperty.call(window.COLOR_PALETTE, colorKey)
+      ? window.COLOR_PALETTE[colorKey] : window.COLOR_PALETTE.zinc;
   }
 
   // =========================================================================
@@ -225,9 +241,11 @@
     state.snapGuides = [];
     saveState();
     syncUI();
+    if (storageWarning) showToast(storageWarning);
   }
 
   function snapshotProjectData() {
+    cancelActiveAnim();
     return {
       version: 2,
       app: 'SimpleCAD',
@@ -238,17 +256,26 @@
       activeLayoutId: state.activeLayoutId,
       selectedId: state.selectedId,
       gridStep: state.gridStep,
-      wallSnap: state.wallSnap
+      wallSnap: state.wallSnap,
+      style3d: state.style3d
     };
   }
 
-  function restoreFromSnapshot(snap) {
+  function applyProjectState(snap) {
+    cancelActiveAnim();
     state.room = deepClone(snap.room);
     state.cables = deepClone(snap.cables);
     state.items = deepClone(snap.items);
     state.layouts = deepClone(snap.layouts);
     state.activeLayoutId = snap.activeLayoutId;
     state.selectedId = snap.selectedId;
+    state.gridStep = snap.gridStep;
+    state.wallSnap = snap.wallSnap;
+    state.style3d = snap.style3d;
+  }
+
+  function restoreFromSnapshot(snap) {
+    applyProjectState(snap);
     saveState();
     syncUI();
   }
@@ -287,10 +314,16 @@
   }
 
   function saveState() {
+    if (IS_PREVIEW || preserveSavedProject) return false;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshotProjectData()));
+      if (storageWarning) toastEl.classList.add('hidden');
+      storageWarning = '';
+      return true;
     } catch (_) {
-      // Ignore storage quota errors cleanly
+      storageWarning = 'Não foi possível guardar neste dispositivo. Exporta o projeto em JSON antes de fechar.';
+      showToast(storageWarning);
+      return false;
     }
   }
 
@@ -299,20 +332,28 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return false;
       const parsed = JSON.parse(raw);
-      if (!parsed || !parsed.room || !Array.isArray(parsed.items)) return false;
-
-      state.room = parsed.room;
-      state.cables = Array.isArray(parsed.cables) ? parsed.cables : [];
-      state.items = parsed.items;
-      state.layouts = Array.isArray(parsed.layouts) && parsed.layouts.length
-        ? parsed.layouts
-        : deepClone(window.DEFAULT_PROJECT.layouts);
-      state.activeLayoutId = parsed.activeLayoutId || state.layouts[0].id;
-      state.selectedId = parsed.selectedId || (state.items[0] ? state.items[0].id : null);
-      state.gridStep = typeof parsed.gridStep === 'number' ? parsed.gridStep : 5;
-      state.wallSnap = typeof parsed.wallSnap === 'boolean' ? parsed.wallSnap : true;
+      window.SimpleCADProjectData.assertCompatible(parsed);
+      const layouts = Array.isArray(parsed.layouts) && parsed.layouts.length === 0
+        ? [{ id: 'imported', name: 'Importado', placements: {} }]
+        : (parsed.layouts ?? deepClone(window.DEFAULT_PROJECT.layouts));
+      const candidate = {
+        ...parsed,
+        cables: parsed.cables ?? [],
+        layouts,
+        activeLayoutId: Array.isArray(layouts) && layouts.some(layout => layout?.id === parsed.activeLayoutId)
+          ? parsed.activeLayoutId : layouts[0]?.id,
+        selectedId: parsed.items?.some(item => item?.id === parsed.selectedId)
+          ? parsed.selectedId : (parsed.items?.[0]?.id ?? null),
+        gridStep: parsed.gridStep ?? 5,
+        wallSnap: parsed.wallSnap ?? true,
+        style3d: parsed.style3d ?? 'solid'
+      };
+      window.SimpleCADProjectData.validate(candidate);
+      applyProjectState(candidate);
       return true;
     } catch (_) {
+      preserveSavedProject = true;
+      storageWarning = 'O projeto guardado não pôde ser aberto e foi preservado. Importa uma cópia válida ou repõe o projeto demo para voltar a guardar.';
       return false;
     }
   }
@@ -946,15 +987,18 @@
     if (handle.includes('s')) { dH = projV; signV = 1; }
     if (handle.includes('n')) { dH = -projV; signV = -1; }
 
-    if (preserveAspect && signU !== 0 && signV !== 0 && startItem.w > 0) {
-      const ratio = startItem.h / startItem.w;
-      if (Math.abs(dW) >= Math.abs(dH)) dH = dW * ratio;
-      else dW = dH / ratio;
-    }
-
     const snapInc = state.gridStep > 0 ? state.gridStep : 1;
-    let newW = Math.max(10, Math.min(600, Math.round((startItem.w + dW) / snapInc) * snapInc));
-    let newH = Math.max(4, Math.min(600, Math.round((startItem.h + dH) / snapInc) * snapInc));
+    let newW = signU ? Math.max(4, Math.min(600, Math.round((startItem.w + dW) / snapInc) * snapInc)) : startItem.w;
+    let newH = signV ? Math.max(4, Math.min(600, Math.round((startItem.h + dH) / snapInc) * snapInc)) : startItem.h;
+    if (preserveAspect && signU && signV) {
+      // Snap one axis, then derive both dimensions from a single bounded scale.
+      const scale = Math.abs(dW / startItem.w) >= Math.abs(dH / startItem.h)
+        ? newW / startItem.w : newH / startItem.h;
+      const boundedScale = Math.max(Math.max(4 / startItem.w, 4 / startItem.h),
+        Math.min(Math.min(600 / startItem.w, 600 / startItem.h), scale));
+      newW = startItem.w * boundedScale;
+      newH = startItem.h * boundedScale;
+    }
 
     const actualDW = signU !== 0 ? (newW - startItem.w) : 0;
     const actualDH = signV !== 0 ? (newH - startItem.h) : 0;
@@ -965,11 +1009,8 @@
 
     item.w = newW;
     item.h = newH;
-    item.x = Number((startItem.x + shiftU * ux + shiftV * vx).toFixed(1));
-    item.y = Number((startItem.y + shiftU * uy + shiftV * vy).toFixed(1));
-    if ((Math.round(item.rot || 0) % 90) === 0) {
-      roundItemCornerToCm(item);
-    }
+    item.x = startItem.x + shiftU * ux + shiftV * vx;
+    item.y = startItem.y + shiftU * uy + shiftV * vy;
   }
 
   // =========================================================================
@@ -987,14 +1028,15 @@
 
   function updateTransform(vw, vh) {
     const isPure = document.body.classList.contains('pure-cad');
-    const padSide = isPure ? 48 : (vw < 640 ? 32 : 68);
+    const padSide = isPure ? 72 : (vw < 640 ? 32 : 76);
     const hudVisible = hudEl && !hudEl.classList.contains('hidden');
     const hudBottom = hudVisible ? (hudEl.offsetTop + hudEl.offsetHeight) : 0;
-    const padTop = isPure ? 44 : Math.max(vw < 640 ? 58 : 108, hudBottom > 0 ? hudBottom + 42 : 0);
-    const padBot = isPure ? 52 : (vw < 640 ? 76 : 98);
+    const padTop = isPure ? 64 : Math.max(vw < 640 ? 58 : 112, hudBottom > 0 ? hudBottom + 44 : 0);
+    const padBot = isPure ? 96 : (vw < 640 ? 78 : 124);
     const availW = Math.max(120, vw - padSide * 2);
     const availH = Math.max(120, vh - padTop - padBot);
-    const baseScale = Math.min(availW / state.room.w, availH / state.room.h);
+    const wtSpan = (Number(state.room.wallThickness) || 14) * 2;
+    const baseScale = Math.min(availW / (state.room.w + wtSpan), availH / (state.room.h + wtSpan));
     view.scale = Math.max(0.25, baseScale * state.zoom);
     view.ox = (vw - state.room.w * view.scale) / 2 + state.panX;
     view.oy = padTop + (availH - state.room.h * view.scale) / 2 + state.panY;
@@ -1148,34 +1190,116 @@
     state.cableAnimRaf = requestAnimationFrame(tick);
   }
 
+  const cachedPatterns = { darkPoche: null, blueprintPoche: null, sketchPoche: null };
+
+  function getPocheHatchPattern(isLight, isSketch = false) {
+    const key = isSketch ? 'sketchPoche' : isLight ? 'blueprintPoche' : 'darkPoche';
+    if (cachedPatterns[key]) return cachedPatterns[key];
+    if (typeof document === 'undefined') return null;
+    try {
+      const patCanvas = document.createElement('canvas');
+      patCanvas.width = 16;
+      patCanvas.height = 16;
+      const patCtx = patCanvas.getContext('2d');
+      if (!patCtx) return null;
+
+      patCtx.fillStyle = isSketch ? '#eae4d6' : isLight ? '#1e293b' : '#181a22';
+      patCtx.fillRect(0, 0, 16, 16);
+
+      patCtx.strokeStyle = isSketch
+        ? 'rgba(20, 24, 30, 0.34)'
+        : isLight
+        ? 'rgba(255, 255, 255, 0.18)'
+        : 'rgba(234, 231, 223, 0.10)';
+      patCtx.lineWidth = isSketch ? 1.05 : 1.2;
+      patCtx.beginPath();
+      // 45 degree diagonal hatching
+      patCtx.moveTo(-4, 4);
+      patCtx.lineTo(12, 20);
+      patCtx.moveTo(0, 0);
+      patCtx.lineTo(16, 16);
+      patCtx.moveTo(4, -4);
+      patCtx.lineTo(20, 12);
+      patCtx.stroke();
+
+      const pat = patCtx.createPattern(patCanvas, 'repeat');
+      cachedPatterns[key] = pat;
+      return pat;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function drawObliqueSlash(ctx, cx, cy, color = '#d99b26') {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx - 3.5, cy + 3.5);
+    ctx.lineTo(cx + 3.5, cy - 3.5);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   function drawSceneToContext(targetCtx, widthPx, heightPx, targetView, theme = 'dark') {
-    const isLight = theme === 'blueprint';
-    if (!isLight && state.viewMode === '3d') {
+    const isInteractive = targetCtx === ctx;
+    const isSketch = theme === 'sketch';
+    const isBlueprint = theme === 'blueprint';
+    const isLight = isBlueprint || isSketch;
+    const styleMode = isSketch ? 'sketch' : isBlueprint ? 'blueprint' : 'dark';
+    if (!isBlueprint && state.viewMode === '3d') {
       drawScene3D(targetCtx, widthPx, heightPx);
       return;
     }
 
-    const isCableMode = !isLight && state.viewMode === 'cables';
+    const isCableMode = !isBlueprint && state.viewMode === 'cables';
     const s = targetView.scale;
     const ox = targetView.ox;
     const oy = targetView.oy;
     const rw = state.room.w * s;
     const rh = state.room.h * s;
+    const wallThickness = Number(state.room.wallThickness) || 14;
+    const wt = wallThickness * s;
 
-    targetCtx.fillStyle = isLight ? '#ffffff' : '#0d0e10';
+    // 1. Canvas backing
+    targetCtx.fillStyle = isSketch ? '#f4f1ea' : isBlueprint ? '#ffffff' : '#0a0b0d';
     targetCtx.fillRect(0, 0, widthPx, heightPx);
+    if (isSketch) {
+      const pat = getSketchPaperPattern(targetCtx);
+      if (pat) {
+        targetCtx.fillStyle = pat;
+        targetCtx.fillRect(0, 0, widthPx, heightPx);
+      }
+    }
 
-    // Room floor
-    targetCtx.fillStyle = isLight ? '#f8fafc' : '#121316';
+    // 2. Physical Cut Wall Cavity Poché (Solid cavity fill + 45° diagonal hatch pattern)
+    targetCtx.save();
+    targetCtx.beginPath();
+    targetCtx.rect(ox - wt, oy - wt, rw + 2 * wt, rh + 2 * wt);
+    targetCtx.rect(ox, oy, rw, rh);
+    targetCtx.fillStyle = isSketch ? '#eae4d6' : isBlueprint ? '#1e293b' : '#181a22';
+    targetCtx.fill('evenodd');
+
+    const pochePat = getPocheHatchPattern(isLight, isSketch);
+    if (pochePat) {
+      targetCtx.fillStyle = pochePat;
+      targetCtx.fill('evenodd');
+    }
+    targetCtx.restore();
+
+    // 3. Room Floor Surface Finish
+    targetCtx.fillStyle = isSketch ? '#fbf9f4' : isBlueprint ? '#f8fafc' : '#121316';
     targetCtx.fillRect(ox, oy, rw, rh);
 
-    // Technical Grid (10cm minor, 50cm major)
-    targetCtx.lineWidth = 1;
+    // Subtle 50cm modular tile / parquet grid (Tier 5: 0.5px hairline)
+    targetCtx.lineWidth = 0.5;
     for (let x = 0; x <= state.room.w; x += 10) {
       const px = Math.round(ox + x * s) + 0.5;
-      targetCtx.strokeStyle = isLight
-        ? (x % 50 === 0 ? '#cbd5e1' : '#e2e8f0')
-        : (x % 50 === 0 ? '#27272a' : '#16161a');
+      targetCtx.strokeStyle = isSketch
+        ? (x % 50 === 0 ? 'rgba(24, 30, 42, 0.11)' : 'rgba(24, 30, 42, 0.032)')
+        : isBlueprint
+        ? (x % 50 === 0 ? '#cbd5e1' : '#f1f5f9')
+        : (x % 50 === 0 ? '#262933' : '#16171b');
       targetCtx.beginPath();
       targetCtx.moveTo(px, oy);
       targetCtx.lineTo(px, oy + rh);
@@ -1183,9 +1307,11 @@
     }
     for (let y = 0; y <= state.room.h; y += 10) {
       const py = Math.round(oy + y * s) + 0.5;
-      targetCtx.strokeStyle = isLight
-        ? (y % 50 === 0 ? '#cbd5e1' : '#e2e8f0')
-        : (y % 50 === 0 ? '#27272a' : '#16161a');
+      targetCtx.strokeStyle = isSketch
+        ? (y % 50 === 0 ? 'rgba(24, 30, 42, 0.11)' : 'rgba(24, 30, 42, 0.032)')
+        : isBlueprint
+        ? (y % 50 === 0 ? '#cbd5e1' : '#f1f5f9')
+        : (y % 50 === 0 ? '#262933' : '#16171b');
       targetCtx.beginPath();
       targetCtx.moveTo(ox, py);
       targetCtx.lineTo(ox + rw, py);
@@ -1195,33 +1321,65 @@
     const { bad: collisions } = computeCollisions();
     const mapScreen = (wx, wy) => ({ x: ox + wx * s, y: oy + wy * s });
 
-    // Doors
+    // 4. Punch Door Openings & Render Door Leaves (Tier 2: 1.8-2.0px)
     for (const door of state.room.doors) {
       const g = getDoorGeometry(door, state.room);
       const ho = mapScreen(g.hx, g.hy);
       const rPx = g.r * s;
+      const dOff = Number(door.offset) || 0;
+      const dW = (Number(door.width) || 90) * s;
+
+      // Punch wall cavity opening
       targetCtx.save();
+      let dopX = 0, dopY = 0, dopW = 0, dopH = 0;
+      if (door.wall === 'bottom') {
+        dopX = ox + dOff * s; dopY = oy + rh; dopW = dW; dopH = wt;
+      } else if (door.wall === 'top') {
+        dopX = ox + dOff * s; dopY = oy - wt; dopW = dW; dopH = wt;
+      } else if (door.wall === 'left') {
+        dopX = ox - wt; dopY = oy + dOff * s; dopW = wt; dopH = dW;
+      } else {
+        dopX = ox + rw; dopY = oy + dOff * s; dopW = wt; dopH = dW;
+      }
+      targetCtx.fillStyle = isSketch ? '#fbf9f4' : isBlueprint ? '#f8fafc' : '#121316';
+      targetCtx.fillRect(dopX, dopY, dopW, dopH);
+
+      // Opening jamb lines (Tier 2: 1.8px)
+      targetCtx.strokeStyle = isSketch ? '#14161a' : isBlueprint ? '#0f172a' : '#d6d3cd';
+      targetCtx.lineWidth = 1.8;
+      targetCtx.beginPath();
+      if (door.wall === 'top' || door.wall === 'bottom') {
+        targetCtx.moveTo(dopX, dopY); targetCtx.lineTo(dopX, dopY + dopH);
+        targetCtx.moveTo(dopX + dopW, dopY); targetCtx.lineTo(dopX + dopW, dopY + dopH);
+      } else {
+        targetCtx.moveTo(dopX, dopY); targetCtx.lineTo(dopX + dopW, dopY);
+        targetCtx.moveTo(dopX, dopY + dopH); targetCtx.lineTo(dopX + dopW, dopY + dopH);
+      }
+      targetCtx.stroke();
+
+      // Swing arc
       targetCtx.beginPath();
       targetCtx.moveTo(ho.x, ho.y);
       targetCtx.arc(ho.x, ho.y, rPx, g.aStart, g.aEnd, false);
       targetCtx.closePath();
-      targetCtx.fillStyle = isLight ? 'rgba(200, 169, 110, 0.14)' : 'rgba(200, 169, 110, 0.08)';
+      targetCtx.fillStyle = isSketch ? 'rgba(182, 126, 42, 0.10)' : isBlueprint ? 'rgba(217, 155, 38, 0.12)' : 'rgba(217, 155, 38, 0.08)';
       targetCtx.fill();
       targetCtx.setLineDash([4, 4]);
-      targetCtx.strokeStyle = '#c8a96e';
-      targetCtx.lineWidth = 1.25;
+      targetCtx.strokeStyle = isSketch ? 'rgba(148, 92, 22, 0.78)' : '#d99b26';
+      targetCtx.lineWidth = isSketch ? 1.1 : 1.0;
       targetCtx.stroke();
       targetCtx.setLineDash([]);
 
+      // Door leaf (Tier 2: 2.0px)
       const openPt = mapScreen(g.openEnd.x, g.openEnd.y);
       targetCtx.beginPath();
       targetCtx.moveTo(ho.x, ho.y);
       targetCtx.lineTo(openPt.x, openPt.y);
-      targetCtx.strokeStyle = '#c8a96e';
-      targetCtx.lineWidth = 2.6;
+      targetCtx.strokeStyle = isSketch ? '#9c5e0e' : '#d99b26';
+      targetCtx.lineWidth = 2.1;
       targetCtx.stroke();
 
-      targetCtx.fillStyle = '#c8a96e';
+      targetCtx.fillStyle = isSketch ? '#7a4c0a' : isBlueprint ? '#b45309' : '#f0ad2c';
       targetCtx.font = '600 9px "JetBrains Mono", Consolas, monospace';
       targetCtx.textAlign = 'center';
       const doorLabel = (door.name && !/^porta(\s|$)/i.test(door.name)) ? door.name.toUpperCase() : 'PORTA';
@@ -1229,39 +1387,121 @@
       targetCtx.restore();
     }
 
-    // Outer walls
-    targetCtx.strokeStyle = isLight ? '#0f172a' : '#71717a';
-    targetCtx.lineWidth = 2.5;
-    targetCtx.strokeRect(ox, oy, rw, rh);
-
-    // Windows
+    // 5. Punch Window Openings, Exterior Sills & Double-Line Glazed Sashes
     for (const win of state.room.windows) {
       const off = Number(win.offset) || 0;
       const wLen = Number(win.width) || 100;
+      const wLenPx = wLen * s;
       targetCtx.save();
-      let wx1, wy1, ww, wh, tx, ty;
-      if (win.wall === 'top' || win.wall === 'bottom') {
-        const yPos = win.wall === 'top' ? 0 : state.room.h;
-        const p = mapScreen(off, yPos);
-        wx1 = p.x; wy1 = p.y - 3; ww = wLen * s; wh = 6;
-        tx = p.x + ww / 2;
-        ty = win.wall === 'top' ? p.y - 8 : p.y + 15;
+      let wopX = 0, wopY = 0, wopW = 0, wopH = 0, tx = 0, ty = 0;
+      const isHoriz = (win.wall === 'top' || win.wall === 'bottom');
+
+      if (win.wall === 'top') {
+        wopX = ox + off * s; wopY = oy - wt; wopW = wLenPx; wopH = wt;
+        tx = wopX + wopW / 2; ty = wopY - 8;
+      } else if (win.wall === 'bottom') {
+        wopX = ox + off * s; wopY = oy + rh; wopW = wLenPx; wopH = wt;
+        tx = wopX + wopW / 2; ty = wopY + wopH + 16;
+      } else if (win.wall === 'left') {
+        wopX = ox - wt; wopY = oy + off * s; wopW = wt; wopH = wLenPx;
+        tx = wopX - 12; ty = wopY + wopH / 2;
       } else {
-        const xPos = win.wall === 'left' ? 0 : state.room.w;
-        const p = mapScreen(xPos, off);
-        wx1 = p.x - 3; wy1 = p.y; ww = 6; wh = wLen * s;
-        tx = win.wall === 'left' ? p.x - 10 : p.x + 10;
-        ty = p.y + wh / 2;
+        wopX = ox + rw; wopY = oy + off * s; wopW = wt; wopH = wLenPx;
+        tx = wopX + wopW + 12; ty = wopY + wopH / 2;
       }
-      targetCtx.fillStyle = isLight ? '#ffffff' : '#0d0e10';
-      targetCtx.fillRect(wx1, wy1, ww, wh);
-      targetCtx.strokeStyle = '#6b93b8';
-      targetCtx.lineWidth = 2;
-      targetCtx.strokeRect(wx1, wy1, ww, wh);
-      targetCtx.fillStyle = isLight ? '#4a6f94' : '#8cb0d1';
+
+      // Punch cavity opening with floor tint
+      targetCtx.fillStyle = isSketch ? '#f4f1ea' : isBlueprint ? '#ffffff' : '#0d0e10';
+      targetCtx.fillRect(wopX, wopY, wopW, wopH);
+
+      // Window jamb lines (Tier 2: 1.8px)
+      targetCtx.strokeStyle = isSketch ? '#14161a' : isBlueprint ? '#0f172a' : '#d6d3cd';
+      targetCtx.lineWidth = 1.8;
+      targetCtx.beginPath();
+      if (isHoriz) {
+        targetCtx.moveTo(wopX, wopY); targetCtx.lineTo(wopX, wopY + wopH);
+        targetCtx.moveTo(wopX + wopW, wopY); targetCtx.lineTo(wopX + wopW, wopY + wopH);
+      } else {
+        targetCtx.moveTo(wopX, wopY); targetCtx.lineTo(wopX + wopW, wopY);
+        targetCtx.moveTo(wopX, wopY + wopH); targetCtx.lineTo(wopX + wopW, wopY + wopH);
+      }
+      targetCtx.stroke();
+
+      // Exterior Window Sill (Tier 4: 1.2px, projecting 2.5px past outer wall)
+      const winStroke = isSketch ? '#2f5d84' : '#5a8cb2';
+      targetCtx.strokeStyle = winStroke;
+      targetCtx.lineWidth = 1.2;
+      targetCtx.beginPath();
+      if (win.wall === 'top') {
+        targetCtx.moveTo(wopX - 2, wopY); targetCtx.lineTo(wopX + wopW + 2, wopY);
+      } else if (win.wall === 'bottom') {
+        targetCtx.moveTo(wopX - 2, wopY + wopH); targetCtx.lineTo(wopX + wopW + 2, wopY + wopH);
+      } else if (win.wall === 'left') {
+        targetCtx.moveTo(wopX, wopY - 2); targetCtx.lineTo(wopX, wopY + wopH + 2);
+      } else {
+        targetCtx.moveTo(wopX + wopW, wopY - 2); targetCtx.lineTo(wopX + wopW, wopY + wopH + 2);
+      }
+      targetCtx.stroke();
+
+      // Double-Line Glazed Window Sashes (spaced 2.5px apart, 1.0px glass lines, cyan glazing fill)
+      const midY = wopY + wopH / 2;
+      const midX = wopX + wopW / 2;
+      if (isHoriz) {
+        targetCtx.fillStyle = isSketch ? 'rgba(110, 158, 198, 0.24)' : 'rgba(90, 140, 178, 0.22)';
+        targetCtx.fillRect(wopX, midY - 2, wopW, 4);
+        targetCtx.strokeStyle = winStroke;
+        targetCtx.lineWidth = 1.0;
+        targetCtx.beginPath();
+        targetCtx.moveTo(wopX, midY - 1.5); targetCtx.lineTo(wopX + wopW, midY - 1.5);
+        targetCtx.moveTo(wopX, midY + 1.5); targetCtx.lineTo(wopX + wopW, midY + 1.5);
+        targetCtx.stroke();
+      } else {
+        targetCtx.fillStyle = isSketch ? 'rgba(110, 158, 198, 0.24)' : 'rgba(90, 140, 178, 0.22)';
+        targetCtx.fillRect(midX - 2, wopY, 4, wopH);
+        targetCtx.strokeStyle = winStroke;
+        targetCtx.lineWidth = 1.0;
+        targetCtx.beginPath();
+        targetCtx.moveTo(midX - 1.5, wopY); targetCtx.lineTo(midX - 1.5, wopY + wopH);
+        targetCtx.moveTo(midX + 1.5, wopY); targetCtx.lineTo(midX + 1.5, wopY + wopH);
+        targetCtx.stroke();
+      }
+
+      targetCtx.fillStyle = isSketch ? '#244b6b' : isBlueprint ? '#4a6f94' : '#8cb0d1';
       targetCtx.font = '600 9px "JetBrains Mono", Consolas, monospace';
       targetCtx.textAlign = 'center';
       targetCtx.fillText(`${win.name || 'JANELA'} ${wLen}cm`, tx, ty);
+      targetCtx.restore();
+    }
+
+    // 6. Wall Boundary Strokes (Tier 1 Heavy Cut: Outer Structure 3.2px, Inner Boundary 1.6px)
+    targetCtx.strokeStyle = isSketch ? '#14161a' : isBlueprint ? '#0f172a' : '#EAE7DF';
+    targetCtx.lineWidth = isSketch ? 2.8 : 3.2;
+    targetCtx.strokeRect(ox - wt, oy - wt, rw + 2 * wt, rh + 2 * wt);
+
+    targetCtx.strokeStyle = isSketch ? '#22262e' : isBlueprint ? '#334155' : '#525562';
+    targetCtx.lineWidth = 1.6;
+    targetCtx.strokeRect(ox, oy, rw, rh);
+
+    // Subtle architectural drafting corner extension ticks on outer wall boundaries
+    if (isSketch) {
+      targetCtx.save();
+      targetCtx.strokeStyle = 'rgba(20, 24, 30, 0.25)';
+      targetCtx.lineWidth = 0.75;
+      const xL = ox - wt;
+      const xR = ox + rw + wt;
+      const yT = oy - wt;
+      const yB = oy + rh + wt;
+      const ext = 8;
+      targetCtx.beginPath();
+      targetCtx.moveTo(xL - ext, yT); targetCtx.lineTo(xL, yT);
+      targetCtx.moveTo(xL, yT - ext); targetCtx.lineTo(xL, yT);
+      targetCtx.moveTo(xR, yT); targetCtx.lineTo(xR + ext, yT);
+      targetCtx.moveTo(xR, yT - ext); targetCtx.lineTo(xR, yT);
+      targetCtx.moveTo(xL - ext, yB); targetCtx.lineTo(xL, yB);
+      targetCtx.moveTo(xL, yB); targetCtx.lineTo(xL, yB + ext);
+      targetCtx.moveTo(xR, yB); targetCtx.lineTo(xR + ext, yB);
+      targetCtx.moveTo(xR, yB); targetCtx.lineTo(xR, yB + ext);
+      targetCtx.stroke();
       targetCtx.restore();
     }
 
@@ -1272,17 +1512,17 @@
       if (isCableMode) {
         targetCtx.beginPath();
         targetCtx.arc(p.x, p.y, 10, 0, Math.PI * 2);
-        targetCtx.fillStyle = 'rgba(250, 204, 21, 0.16)';
+        targetCtx.fillStyle = isSketch ? 'rgba(180, 118, 22, 0.16)' : 'rgba(250, 204, 21, 0.16)';
         targetCtx.fill();
-        targetCtx.strokeStyle = 'rgba(250, 204, 21, 0.55)';
+        targetCtx.strokeStyle = isSketch ? 'rgba(156, 94, 14, 0.65)' : 'rgba(250, 204, 21, 0.55)';
         targetCtx.lineWidth = 1;
         targetCtx.stroke();
       }
       const rSq = isCableMode ? 5 : 3.5;
-      targetCtx.fillStyle = '#eab308';
+      targetCtx.fillStyle = isSketch ? '#9e6b1b' : '#eab308';
       targetCtx.fillRect(p.x - rSq, p.y - rSq, rSq * 2, rSq * 2);
       targetCtx.font = isCableMode ? '700 10.5px "JetBrains Mono", Consolas, monospace' : '600 9.5px "JetBrains Mono", Consolas, monospace';
-      targetCtx.fillStyle = isLight ? '#b45309' : '#facc15';
+      targetCtx.fillStyle = isSketch ? '#7a4c0a' : isBlueprint ? '#b45309' : '#facc15';
       if (out.wall === 'left') {
         targetCtx.textAlign = 'right';
         targetCtx.fillText(out.name || out.id, p.x - (isCableMode ? 10 : 7), p.y + 3);
@@ -1298,35 +1538,109 @@
       }
     }
 
-    // Room Outer Dimensions
-    targetCtx.strokeStyle = isLight ? '#64748b' : '#52525b';
-    targetCtx.fillStyle = isLight ? '#334155' : '#a1a1aa';
-    targetCtx.font = '600 10px "JetBrains Mono", Consolas, monospace';
-    targetCtx.lineWidth = 1;
+    // 7. Architectural Dimensions with Extension Witness Lines & 45° Oblique Slashes
+    const dimY = oy + rh + wt + 22;
+    const dimX = ox + rw + wt + 22;
 
-    const dimY = oy + rh + 18;
+    targetCtx.save();
+    targetCtx.strokeStyle = isSketch ? 'rgba(24, 28, 36, 0.52)' : isBlueprint ? '#64748b' : '#706e67';
+    targetCtx.lineWidth = 0.75;
+
+    // Horizontal witness lines from wall corners (6px air gap, extending 5px past dimY)
+    targetCtx.beginPath();
+    targetCtx.moveTo(ox, oy + rh + wt + 6);
+    targetCtx.lineTo(ox, dimY + 5);
+    targetCtx.moveTo(ox + rw, oy + rh + wt + 6);
+    targetCtx.lineTo(ox + rw, dimY + 5);
+    targetCtx.stroke();
+
+    // Horizontal dimension cut line
     targetCtx.beginPath();
     targetCtx.moveTo(ox, dimY);
     targetCtx.lineTo(ox + rw, dimY);
     targetCtx.stroke();
-    targetCtx.textAlign = 'center';
-    targetCtx.fillText(`${state.room.w} cm (${(state.room.w / 100).toFixed(2)} m)`, ox + rw / 2, dimY + 13);
 
-    const dimX = ox + rw + 18;
+    // 45° Oblique slashes
+    const tickCol = isSketch ? '#9e6b1b' : '#d99b26';
+    drawObliqueSlash(targetCtx, ox, dimY, tickCol);
+    drawObliqueSlash(targetCtx, ox + rw, dimY, tickCol);
+
+    targetCtx.fillStyle = isSketch ? '#14161a' : isBlueprint ? '#334155' : '#EAE7DF';
+    targetCtx.font = '600 10px "JetBrains Mono", Consolas, monospace';
+    targetCtx.textAlign = 'center';
+    targetCtx.fillText(`${state.room.w} cm (${(state.room.w / 100).toFixed(2)} m)`, ox + rw / 2, dimY + 14);
+
+    // Vertical witness lines from wall corners
+    targetCtx.beginPath();
+    targetCtx.moveTo(ox + rw + wt + 6, oy);
+    targetCtx.lineTo(dimX + 5, oy);
+    targetCtx.moveTo(ox + rw + wt + 6, oy + rh);
+    targetCtx.lineTo(dimX + 5, oy + rh);
+    targetCtx.stroke();
+
+    // Vertical dimension cut line
     targetCtx.beginPath();
     targetCtx.moveTo(dimX, oy);
     targetCtx.lineTo(dimX, oy + rh);
     targetCtx.stroke();
+
+    // 45° Oblique slashes
+    drawObliqueSlash(targetCtx, dimX, oy, tickCol);
+    drawObliqueSlash(targetCtx, dimX, oy + rh, tickCol);
+
     targetCtx.save();
-    targetCtx.translate(dimX + 12, oy + rh / 2);
+    targetCtx.translate(dimX + 14, oy + rh / 2);
     targetCtx.rotate(Math.PI / 2);
     targetCtx.fillText(`${state.room.h} cm (${(state.room.h / 100).toFixed(2)} m)`, 0, 0);
     targetCtx.restore();
 
+    // Architectural Drawing Stamp & Room Area Stamp (Bottom-Left)
+    if (!isBlueprint && isInteractive) {
+      const hasHudBottomReadout = (targetCtx === ctx) && !document.body.classList.contains('pure-cad');
+      const stampX = 16;
+      const stampH = 52;
+      const stampY = hasHudBottomReadout ? Math.max(16, heightPx - 116) : (heightPx - 68);
+      const stampTitle = (state.room.name || 'STUDIO ROOM').toUpperCase();
+      const areaM2 = ((state.room.w * state.room.h) / 10000).toFixed(2);
+      const areaLine = `ÁREA: ${areaM2} m² | PAREDE: ${wallThickness} cm`;
+
+      targetCtx.font = '700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+      const titleW = targetCtx.measureText(stampTitle).width;
+      targetCtx.font = '600 9.5px "JetBrains Mono", Consolas, monospace';
+      const areaW = targetCtx.measureText(areaLine).width;
+      const stampW = Math.max(216, Math.ceil(Math.max(titleW, areaW)) + 24);
+
+      targetCtx.fillStyle = isSketch ? 'rgba(250, 248, 243, 0.94)' : 'rgba(16, 18, 23, 0.90)';
+      targetCtx.fillRect(stampX, stampY, stampW, stampH);
+      targetCtx.strokeStyle = isSketch ? 'rgba(20, 24, 30, 0.45)' : 'rgba(234, 231, 223, 0.12)';
+      targetCtx.lineWidth = 1;
+      targetCtx.strokeRect(stampX, stampY, stampW, stampH);
+
+      // Ochre accent bar
+      targetCtx.fillStyle = isSketch ? '#9e6b1b' : '#d99b26';
+      targetCtx.fillRect(stampX, stampY, 3, stampH);
+
+      // Stamp text
+      targetCtx.textAlign = 'left';
+      targetCtx.textBaseline = 'top';
+      targetCtx.font = '700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+      targetCtx.fillStyle = isSketch ? '#14161a' : '#EAE7DF';
+      targetCtx.fillText(stampTitle, stampX + 10, stampY + 7);
+
+      targetCtx.font = '600 9.5px "JetBrains Mono", Consolas, monospace';
+      targetCtx.fillStyle = isSketch ? '#8a5a14' : '#d99b26';
+      targetCtx.fillText(areaLine, stampX + 10, stampY + 23);
+
+      targetCtx.font = '500 8.5px "JetBrains Mono", Consolas, monospace';
+      targetCtx.fillStyle = isSketch ? '#475569' : '#b0aca2';
+      targetCtx.fillText('ESCALA 1:50 | SIMPLECAD ARCH', stampX + 10, stampY + 37);
+    }
+    targetCtx.restore();
+
     // Draw Rugs / Ignore-Collision Layer First, Then Normal Items, Selected On Top
     const ordered = [...state.items].sort((a, b) => {
-      if (a.id === state.selectedId) return 1;
-      if (b.id === state.selectedId) return -1;
+      if (isInteractive && a.id === state.selectedId) return 1;
+      if (isInteractive && b.id === state.selectedId) return -1;
       if (a.ignoreCollision !== b.ignoreCollision) return a.ignoreCollision ? -1 : 1;
       return 0;
     });
@@ -1335,23 +1649,23 @@
     if (isCableMode) targetCtx.globalAlpha = 0.24;
     for (const item of ordered) {
       if (!item.visible) continue;
-      drawFurnitureItem(targetCtx, item, mapScreen, s, item.id === state.selectedId && !isLight && !isCableMode, collisions.has(item.id), isLight);
+      drawFurnitureItem(targetCtx, item, mapScreen, s, isInteractive && item.id === state.selectedId && !isBlueprint && !isCableMode, collisions.has(item.id), styleMode);
     }
     targetCtx.restore();
 
     // Selected Item Guides & Direct Handles (only in live interactive viewport)
-    if (!isLight && !isCableMode) {
+    if (isInteractive && !isBlueprint && !isCableMode) {
       const sel = state.items.find(i => i.id === state.selectedId && i.visible);
       if (sel) {
-        drawClearanceGuides(targetCtx, sel, mapScreen);
-        drawSelectionHandles(targetCtx, sel);
+        drawClearanceGuides(targetCtx, sel, mapScreen, styleMode);
+        drawSelectionHandles(targetCtx, sel, styleMode);
       }
 
       // Snap Alignment Guides
       for (const g of state.snapGuides) {
         targetCtx.save();
         targetCtx.setLineDash([4, 4]);
-        targetCtx.strokeStyle = '#c8a96e';
+        targetCtx.strokeStyle = isSketch ? '#9e6b1b' : '#c8a96e';
         targetCtx.lineWidth = 1;
         targetCtx.beginPath();
         if (g.axis === 'x') {
@@ -1372,12 +1686,12 @@
     for (const cable of state.cables) {
       if (!cable.visible) continue;
       const stats = computeCableStats(cable);
-      if (stats) drawCableLine(targetCtx, cable, stats, mapScreen, isLight);
+      if (stats) drawCableLine(targetCtx, cable, stats, mapScreen, styleMode);
     }
 
     // Measure Tool Overlay
-    if (!isLight && state.measurePts.length > 0) {
-      drawMeasureOverlay(targetCtx, mapScreen);
+    if (isInteractive && !isBlueprint && state.measurePts.length > 0) {
+      drawMeasureOverlay(targetCtx, mapScreen, styleMode);
     }
   }
 
@@ -1385,15 +1699,21 @@
     const rw = state.room.w || 270;
     const rh = state.room.h || 475;
     const cam = state.cam3d;
-    const scale = Math.min(widthPx / Math.max(260, rw * 1.52), heightPx / Math.max(340, rh * 1.25 + 150)) * cam.zoom;
+    const pitchRad = degToRad(Math.max(14, Math.min(82, cam.pitch)));
+    const diag = Math.hypot(rw, rh);
+    const wallZ = 240;
+    const wallProjH = wallZ * Math.cos(pitchRad);
+    const refW = Math.max(320, diag + 56);
+    const refH = Math.max(360, diag * Math.sin(pitchRad) + wallProjH + 56);
+    const scale = Math.min(widthPx / refW, heightPx / refH) * cam.zoom;
     return {
       cx: rw * 0.5,
       cy: rh * 0.5,
       yawRad: degToRad(cam.yaw),
-      pitchRad: degToRad(Math.max(14, Math.min(82, cam.pitch))),
+      pitchRad,
       scale,
       sxMid: widthPx * 0.5 + cam.panX,
-      syMid: heightPx * 0.56 + cam.panY
+      syMid: heightPx * 0.5 + wallProjH * 0.5 * scale + cam.panY
     };
   }
 
@@ -1469,13 +1789,42 @@
   }
 
   const RGB_3D_PALETTE = {
-    zinc:    [118, 115, 108],
-    sky:     [82, 110, 138],
-    emerald: [84, 124, 108],
-    amber:   [172, 140, 86],
-    violet:  [124, 110, 96],
-    rose:    [176, 86, 86]
+    zinc:    [175, 172, 166], // Bone plaster / limestone
+    sky:     [90, 140, 178],   // Harbour Blue
+    emerald: [110, 152, 135], // Mineral Green
+    amber:   [217, 155, 38],  // Architectural Ochre
+    violet:  [145, 134, 122], // Taupe Linen
+    rose:    [217, 107, 107]  // Terracotta
   };
+
+  const SUN_VECTOR_3D = { x: 0.4505, y: -0.4505, z: 0.7708 };
+
+  function shadeArchitecturalCel(baseRgb, normal, alpha = 1) {
+    const nx = normal ? normal.x : 0;
+    const ny = normal ? normal.y : 0;
+    const nz = normal ? normal.z : 1;
+    const d = nx * SUN_VECTOR_3D.x + ny * SUN_VECTOR_3D.y + nz * SUN_VECTOR_3D.z;
+
+    let factor;
+    let dr = 0, dg = 0, db = 0;
+    if (d > 0.22) {
+      // Direct sunlight: warm golden tint
+      factor = 1.04;
+      dr = 8; dg = 4; db = -4;
+    } else if (d >= -0.10) {
+      // Midtone neutral
+      factor = 0.86;
+    } else {
+      // Ambient shadow: cool slate-blue tint
+      factor = 0.64;
+      dr = -4; dg = 2; db = 8;
+    }
+
+    const r = Math.min(255, Math.max(0, Math.round(baseRgb[0] * factor + dr)));
+    const g = Math.min(255, Math.max(0, Math.round(baseRgb[1] * factor + dg)));
+    const b = Math.min(255, Math.max(0, Math.round(baseRgb[2] * factor + db)));
+    return alpha >= 1 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
 
   function shadeRgb(rgb, factor, alpha = 0.92) {
     const r = Math.min(255, Math.round(rgb[0] * factor));
@@ -1484,9 +1833,82 @@
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
 
+  let sketchPaperPatternCache = null;
+  function getSketchPaperPattern(targetCtx) {
+    if (sketchPaperPatternCache) return sketchPaperPatternCache;
+    if (typeof document === 'undefined') return null;
+    const tile = document.createElement('canvas');
+    tile.width = 96;
+    tile.height = 96;
+    const tctx = tile.getContext('2d');
+    if (!tctx) return null;
+    // Deterministic subtle warm cotton rag paper tooth
+    let seed = 1337;
+    const rand = () => {
+      seed = (seed * 16807) % 2147483647;
+      return (seed - 1) / 2147483646;
+    };
+    for (let i = 0; i < 420; i++) {
+      const x = rand() * 96;
+      const y = rand() * 96;
+      const r = 0.5 + rand() * 1.1;
+      tctx.fillStyle = rand() > 0.45 ? 'rgba(130, 118, 96, 0.045)' : 'rgba(255, 253, 248, 0.065)';
+      tctx.fillRect(x, y, r, r);
+    }
+    for (let i = 0; i < 24; i++) {
+      const x = rand() * 96;
+      const y = rand() * 96;
+      tctx.strokeStyle = 'rgba(120, 110, 92, 0.032)';
+      tctx.lineWidth = 0.6;
+      tctx.beginPath();
+      tctx.moveTo(x, y);
+      tctx.lineTo(x + (rand() - 0.5) * 7, y + (rand() - 0.5) * 4);
+      tctx.stroke();
+    }
+    sketchPaperPatternCache = targetCtx.createPattern(tile, 'repeat');
+    return sketchPaperPatternCache;
+  }
+
+  function shadeArchitecturalSketch(baseRgb, normal, alpha = 1, isBad = false, isSel = false, isDoor = false, lightVec = SUN_VECTOR_3D) {
+    const nx = normal ? normal.x : 0;
+    const ny = normal ? normal.y : 0;
+    const nz = normal ? normal.z : 1;
+    const d = nx * lightVec.x + ny * lightVec.y + nz * lightVec.z;
+
+    let paperTarget;
+    let tintMix;
+    if (isBad) {
+      paperTarget = d > 0.16 ? [252, 232, 230] : d >= -0.04 ? [246, 214, 212] : [236, 196, 194];
+      tintMix = 0.22;
+    } else if (isSel) {
+      paperTarget = d > 0.16 ? [253, 244, 218] : d >= -0.04 ? [248, 234, 198] : [238, 220, 180];
+      tintMix = 0.16;
+    } else if (isDoor) {
+      paperTarget = [244, 224, 182];
+      tintMix = 0.24;
+    } else {
+      paperTarget = d > 0.16 ? [252, 250, 246] : d >= -0.04 ? [245, 241, 234] : [233, 228, 217];
+      tintMix = d > 0.16 ? 0.07 : 0.10;
+    }
+
+    const r = Math.min(255, Math.max(0, Math.round(paperTarget[0] * (1 - tintMix) + baseRgb[0] * tintMix)));
+    const g = Math.min(255, Math.max(0, Math.round(paperTarget[1] * (1 - tintMix) + baseRgb[1] * tintMix)));
+    const b = Math.min(255, Math.max(0, Math.round(paperTarget[2] * (1 - tintMix) + baseRgb[2] * tintMix)));
+    return alpha >= 1 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
   function drawScene3D(targetCtx, widthPx, heightPx) {
-    targetCtx.fillStyle = '#0d0e10';
+    const isInteractive = targetCtx === ctx;
+    const isSketch = state.style3d === 'sketch';
+    targetCtx.fillStyle = isSketch ? '#f4f1ea' : '#0d0e10';
     targetCtx.fillRect(0, 0, widthPx, heightPx);
+    if (isSketch) {
+      const pat = getSketchPaperPattern(targetCtx);
+      if (pat) {
+        targetCtx.fillStyle = pat;
+        targetCtx.fillRect(0, 0, widthPx, heightPx);
+      }
+    }
 
     const t = get3DTransform(widthPx, heightPx);
     const W = state.room.w;
@@ -1503,15 +1925,36 @@
     targetCtx.lineTo(fl[2].x, fl[2].y);
     targetCtx.lineTo(fl[3].x, fl[3].y);
     targetCtx.closePath();
-    targetCtx.fillStyle = '#121316';
+    targetCtx.fillStyle = isSketch ? '#faf8f3' : '#121316';
     targetCtx.fill();
-    targetCtx.strokeStyle = '#383b45';
-    targetCtx.lineWidth = 1.5;
+    targetCtx.strokeStyle = isSketch ? 'rgba(20, 24, 30, 0.85)' : '#383b45';
+    targetCtx.lineWidth = isSketch ? 1.8 : 1.5;
     targetCtx.stroke();
 
+    // Subtle corner drafting extension ticks in Sketch mode
+    if (isSketch) {
+      targetCtx.strokeStyle = 'rgba(20, 24, 30, 0.24)';
+      targetCtx.lineWidth = 0.75;
+      for (let i = 0; i < 4; i++) {
+        const a = fl[i];
+        const b = fl[(i + 1) % 4];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const ux = (dx / len) * 10;
+        const uy = (dy / len) * 10;
+        targetCtx.beginPath();
+        targetCtx.moveTo(a.x - ux, a.y - uy);
+        targetCtx.lineTo(a.x, a.y);
+        targetCtx.moveTo(b.x, b.y);
+        targetCtx.lineTo(b.x + ux, b.y + uy);
+        targetCtx.stroke();
+      }
+    }
+
     // 50cm floor grid lines
-    targetCtx.lineWidth = 1;
-    targetCtx.strokeStyle = '#1e1e26';
+    targetCtx.lineWidth = isSketch ? 0.75 : 1;
+    targetCtx.strokeStyle = isSketch ? 'rgba(28, 34, 46, 0.085)' : '#1e1e26';
     for (let x = 50; x < W; x += 50) {
       const a = p3(x, 0, 0);
       const b = p3(x, H, 0);
@@ -1545,32 +1988,336 @@
       targetCtx.moveTo(pts[0].x, pts[0].y);
       for (let i = 1; i < pts.length; i++) targetCtx.lineTo(pts[i].x, pts[i].y);
       targetCtx.closePath();
-      targetCtx.fillStyle = 'rgba(200, 169, 110, 0.12)';
-      targetCtx.fill();
-      targetCtx.strokeStyle = 'rgba(200, 169, 110, 0.55)';
-      targetCtx.stroke();
+      if (isSketch) {
+        targetCtx.fillStyle = 'rgba(182, 126, 42, 0.09)';
+        targetCtx.fill();
+        targetCtx.setLineDash([5, 4]);
+        targetCtx.strokeStyle = 'rgba(148, 92, 22, 0.72)';
+        targetCtx.lineWidth = 1.1;
+        targetCtx.stroke();
+        targetCtx.setLineDash([]);
+      } else {
+        targetCtx.fillStyle = 'rgba(200, 169, 110, 0.12)';
+        targetCtx.fill();
+        targetCtx.strokeStyle = 'rgba(200, 169, 110, 0.55)';
+        targetCtx.stroke();
+      }
     }
 
-    // Collect 3D Faces for Painter's Depth Sort
-    const faces = [];
-    state.hitRegions3D = [];
-    state.handleHits3D = [];
+    // Camera view direction pointing toward viewer in world coordinates
+    const cY = Math.cos(t.yawRad);
+    const sY = Math.sin(t.yawRad);
+    const cP = Math.cos(t.pitchRad);
+    const sP = Math.sin(t.pitchRad);
+    const camDir = { x: sY * cP, y: cY * cP, z: sP };
+    // Camera-relative upper-left studio light for consistent 3D Sketch form contrast across any orbit angle
+    const rawSlx = -cY * 0.72 - sY * sP * 0.44 + camDir.x * 0.36;
+    const rawSly = sY * 0.72 - cY * sP * 0.44 + camDir.y * 0.36;
+    const rawSlz = cP * 0.44 + camDir.z * 0.36;
+    const slLen = Math.hypot(rawSlx, rawSly, rawSlz) || 1;
+    const sketchLightVec = { x: rawSlx / slLen, y: rawSly / slLen, z: rawSlz / slLen };
 
-    const pushQuad = (pts3, fill, stroke, lineWidth = 1, bias = 0, itemId = null, label = null) => {
-      const proj = pts3.map(v => p3(v.x, v.y, v.z));
-      const depth = proj.reduce((acc, q) => acc + q.depth, 0) / proj.length + bias;
-      faces.push({ pts: proj, fill, stroke, lineWidth, depth, itemId, label });
+    const floorQuads = [];
+    const backWallQuads = [];
+    const prisms = [];
+    const cutawayQuads = [];
+    const itemLabelsMap = new Map();
+    if (isInteractive) {
+      state.hitRegions3D = [];
+      state.handleHits3D = [];
+    }
+
+    const drawQuadList = (list) => {
+      for (const q of list) {
+        const pts = q.pts;
+        if (!pts || pts.length < 3) continue;
+        targetCtx.beginPath();
+        targetCtx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) targetCtx.lineTo(pts[i].x, pts[i].y);
+        targetCtx.closePath();
+        if (q.fill && q.fill !== 'transparent') {
+          targetCtx.fillStyle = q.fill;
+          targetCtx.fill();
+        }
+        if (q.lineWidth > 0 && q.stroke && q.stroke !== 'transparent') {
+          targetCtx.strokeStyle = q.stroke;
+          targetCtx.lineWidth = q.lineWidth;
+          targetCtx.stroke();
+        }
+      }
     };
 
-    const addBox3D = (poly2d, z0, z1, baseRgb, stroke, lineWidth = 1, itemId = null, label = null, bias = 0) => {
+    const makeQuadObj = (pts3, fill, stroke, lineWidth = 1, bias = 0, itemId = null, label = null) => {
+      const proj = pts3.map(v => p3(v.x, v.y, v.z));
+      const depth = proj.reduce((acc, q) => acc + q.depth, 0) / proj.length + bias;
+      return { pts: proj, fill, stroke, lineWidth, depth, itemId, label };
+    };
+
+    const ensureCW = (poly2d) => {
+      let area2 = 0;
+      for (let i = 0; i < poly2d.length; i++) {
+        const a = poly2d[i];
+        const b = poly2d[(i + 1) % poly2d.length];
+        area2 += a.x * b.y - b.x * a.y;
+      }
+      return area2 < 0 ? [...poly2d].reverse() : poly2d;
+    };
+
+    const sketchItemFlags = new Map();
+    const sketchCages = new Map();
+
+    const addBox3D = (rawPoly2d, z0, z1, baseRgb, stroke, lineWidth = 1, itemId = null, label = null, customAlpha = 1) => {
+      if (!rawPoly2d || rawPoly2d.length < 3 || z1 <= z0) return;
+      const poly2d = ensureCW(rawPoly2d);
       const bot = poly2d.map(pt => ({ x: pt.x, y: pt.y, z: z0 }));
       const top = poly2d.map(pt => ({ x: pt.x, y: pt.y, z: z1 }));
-      for (let i = 0; i < poly2d.length; i++) {
-        const j = (i + 1) % poly2d.length;
-        const sideFactor = i % 2 === 0 ? 0.68 : 0.52;
-        pushQuad([bot[i], bot[j], top[j], top[i]], shadeRgb(baseRgb, sideFactor), stroke, lineWidth, bias, itemId, null);
+      const n = poly2d.length;
+      const localFaces = [];
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      let cx2 = 0, cy2 = 0;
+      for (const pt of poly2d) {
+        if (pt.x < minX) minX = pt.x;
+        if (pt.x > maxX) maxX = pt.x;
+        if (pt.y < minY) minY = pt.y;
+        if (pt.y > maxY) maxY = pt.y;
+        cx2 += pt.x;
+        cy2 += pt.y;
       }
-      pushQuad(top, shadeRgb(baseRgb, 0.96), stroke, lineWidth + 0.25, bias + 0.5, itemId, label);
+      cx2 /= n;
+      cy2 /= n;
+
+      const flags = itemId ? sketchItemFlags.get(itemId) : null;
+      const isBad = Boolean(flags && flags.isBad);
+      const isSel = Boolean(flags && flags.isSel);
+      const isDoor = customAlpha < 1 && !itemId;
+      const sideInfos = [];
+
+      for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n;
+        const p0 = bot[i], p1 = bot[j], p2 = top[j], p3v = top[i];
+        const v1 = { x: p1.x - p0.x, y: p1.y - p0.y, z: p1.z - p0.z };
+        const v2 = { x: p3v.x - p0.x, y: p3v.y - p0.y, z: p3v.z - p0.z };
+        const nx = v1.y * v2.z - v1.z * v2.y;
+        const ny = v1.z * v2.x - v1.x * v2.z;
+        const nz = v1.x * v2.y - v1.y * v2.x;
+        const len = Math.hypot(nx, ny, nz) || 1;
+        const norm = { x: nx / len, y: ny / len, z: nz / len };
+        const viewDot = norm.x * camDir.x + norm.y * camDir.y + norm.z * camDir.z;
+        const vis = customAlpha < 1 || viewDot > 0.001;
+        const activeLight = isSketch ? sketchLightVec : SUN_VECTOR_3D;
+        const sunDot = norm.x * activeLight.x + norm.y * activeLight.y + norm.z * activeLight.z;
+        sideInfos.push({ norm, vis, sunDot });
+        if (!vis) continue;
+        const fill = isSketch
+          ? shadeArchitecturalSketch(baseRgb, norm, customAlpha, isBad, isSel, isDoor, sketchLightVec)
+          : shadeArchitecturalCel(baseRgb, norm, customAlpha);
+        localFaces.push(makeQuadObj([p0, p1, p2, p3v], fill, isSketch ? 'transparent' : stroke, isSketch ? 0 : lineWidth, 0, itemId, null));
+      }
+
+      // Top face points upward: normal is [0, 0, 1]
+      const topFill = isSketch
+        ? shadeArchitecturalSketch(baseRgb, { x: 0, y: 0, z: 1 }, customAlpha, isBad, isSel, isDoor, sketchLightVec)
+        : shadeArchitecturalCel(baseRgb, { x: 0, y: 0, z: 1 }, customAlpha);
+      const topQuad = makeQuadObj(top, topFill, isSketch ? 'transparent' : stroke, isSketch ? 0 : lineWidth + 0.2, 0, itemId, label);
+      localFaces.push(topQuad);
+
+      let sketchMeta = null;
+      if (isSketch) {
+        const botPts = bot.map(v => p3(v.x, v.y, v.z));
+        const topPts = top.map(v => p3(v.x, v.y, v.z));
+        const isRound = n >= 6;
+        const isMicro = Math.max(maxX - minX, maxY - minY, z1 - z0) < 9 || isDoor;
+        const inkRgb = isBad ? '176, 36, 36' : isSel ? '156, 94, 14' : isDoor ? '138, 90, 20' : '20, 23, 28';
+        const edges = [];
+        const overshoots = [];
+        const hatches = [];
+        const addOvershoot = (ax, ay, bx, by, minPx, maxExt) => {
+          const dx = bx - ax;
+          const dy = by - ay;
+          const slen = Math.hypot(dx, dy);
+          if (slen < minPx) return;
+          const ext = Math.min(maxExt, slen * 0.085);
+          const ux = (dx / slen) * ext;
+          const uy = (dy / slen) * ext;
+          overshoots.push([ax - ux, ay - uy, ax, ay], [bx, by, bx + ux, by + uy]);
+        };
+
+        for (let i = 0; i < n; i++) {
+          const j = (i + 1) % n;
+          const sInfo = sideInfos[i];
+          const vis = sInfo.vis;
+          const visPrev = sideInfos[(i - 1 + n) % n].vis;
+
+          // Vertical edge i (shared between side i-1 and side i)
+          if (visPrev || vis) {
+            const isSil = visPrev !== vis;
+            if (!(visPrev && vis && isRound)) {
+              edges.push({
+                x1: botPts[i].x, y1: botPts[i].y, x2: topPts[i].x, y2: topPts[i].y,
+                w: isDoor ? 1.25 : isMicro ? (isSil ? 1.15 : 0.75) : (isSil ? 2.05 : 1.05),
+                a: isDoor ? 0.78 : isSil ? 0.94 : 0.68
+              });
+              if (!isRound && !isMicro) addOvershoot(botPts[i].x, botPts[i].y, topPts[i].x, topPts[i].y, 18, 7.5);
+            }
+          }
+
+          // Top rim edge i (top face is visible from camera z > 0)
+          const topSil = !vis;
+          edges.push({
+            x1: topPts[i].x, y1: topPts[i].y, x2: topPts[j].x, y2: topPts[j].y,
+            w: isDoor ? 1.25 : isMicro ? (topSil ? 1.15 : 0.85) : isRound ? (topSil ? 1.95 : 1.35) : (topSil ? 2.0 : 1.15),
+            a: isDoor ? 0.8 : topSil ? 0.94 : (isRound ? 0.78 : 0.74)
+          });
+          if (!isRound && !isMicro) addOvershoot(topPts[i].x, topPts[i].y, topPts[j].x, topPts[j].y, 20, 7.5);
+
+          // Bottom / Ground-contact rim edge i
+          if (vis) {
+            const onFloor = z0 <= 0.6;
+            edges.push({
+              x1: botPts[i].x, y1: botPts[i].y, x2: botPts[j].x, y2: botPts[j].y,
+              w: isDoor ? 1.3 : isMicro ? (onFloor ? 1.35 : 0.95) : (onFloor ? 2.35 : 1.75),
+              a: isDoor ? 0.82 : onFloor ? 0.98 : 0.88
+            });
+            if (!isRound && !isMicro) addOvershoot(botPts[i].x, botPts[i].y, botPts[j].x, botPts[j].y, 20, 8.0);
+          }
+
+          // Vertical architectural pen hatching on shadowed vertical faces
+          if (vis && customAlpha >= 1 && Math.abs(sInfo.norm.z) < 0.35 && sInfo.sunDot < -0.02) {
+            const worldLen = Math.hypot(poly2d[j].x - poly2d[i].x, poly2d[j].y - poly2d[i].y);
+            const worldH = z1 - z0;
+            const horizPx = Math.hypot(botPts[j].x - botPts[i].x, botPts[j].y - botPts[i].y);
+            const vertPx = Math.hypot(topPts[i].x - botPts[i].x, topPts[i].y - botPts[i].y);
+            if (horizPx >= 12 && vertPx >= 9 && worldLen >= 10 && worldH >= 8) {
+              const gapPx = isRound ? 5.2 : Math.min(6.4, 4.3 + Math.max(0, horizPx - 36) * 0.025);
+              const count = Math.max(2, Math.min(24, Math.floor(horizPx / gapPx)));
+              const hatchAlpha = sInfo.sunDot < -0.28 ? 0.54 : 0.36;
+              for (let k = 1; k < count; k++) {
+                const u = k / count;
+                let zInsetA = 0.05 + ((k * 37) % 7) * 0.012;
+                let zInsetB = 0.94 - ((k * 53) % 7) * 0.012;
+                if (worldH >= 55 && vertPx >= 48 && (k % 4 === 2)) {
+                  zInsetB = 0.64 + ((k * 19) % 4) * 0.05;
+                }
+                const wx = poly2d[i].x + (poly2d[j].x - poly2d[i].x) * u;
+                const wy = poly2d[i].y + (poly2d[j].y - poly2d[i].y) * u;
+                const hp0 = p3(wx, wy, z0 + worldH * zInsetA);
+                const hp1 = p3(wx, wy, z0 + worldH * zInsetB);
+                hatches.push([hp0.x, hp0.y, hp1.x, hp1.y, hatchAlpha]);
+              }
+            }
+          }
+        }
+        sketchMeta = { inkRgb, edges, overshoots, hatches };
+      }
+
+      const centerProj = p3(cx2, cy2, (z0 + z1) * 0.5);
+      prisms.push({
+        poly2d,
+        minX, maxX, minY, maxY, minZ: z0, maxZ: z1,
+        depth: centerProj.depth,
+        faces: localFaces,
+        sketchMeta,
+        labelQuad: label ? topQuad : null,
+        itemId
+      });
+    };
+
+    const comparePrisms3D = (a, b) => {
+      const eps = 0.05;
+      if (a.maxZ <= b.minZ + eps) return -1;
+      if (b.maxZ <= a.minZ + eps) return 1;
+
+      if (Math.abs(camDir.x) > 0.001) {
+        if (a.maxX <= b.minX + eps) return camDir.x > 0 ? -1 : 1;
+        if (b.maxX <= a.minX + eps) return camDir.x > 0 ? 1 : -1;
+      }
+
+      if (Math.abs(camDir.y) > 0.001) {
+        if (a.maxY <= b.minY + eps) return camDir.y > 0 ? -1 : 1;
+        if (b.maxY <= a.minY + eps) return camDir.y > 0 ? 1 : -1;
+      }
+
+      const polys = [a.poly2d, b.poly2d];
+      for (let pIdx = 0; pIdx < 2; pIdx++) {
+        const poly = polys[pIdx];
+        for (let i = 0; i < poly.length; i++) {
+          const q0 = poly[i];
+          const q1 = poly[(i + 1) % poly.length];
+          const ex = q1.x - q0.x;
+          const ey = q1.y - q0.y;
+          const len = Math.hypot(ex, ey);
+          if (len < 1e-6) continue;
+          const nx = -ey / len;
+          const ny = ex / len;
+          let minA = Infinity, maxA = -Infinity;
+          for (const pt of a.poly2d) {
+            const d = pt.x * nx + pt.y * ny;
+            if (d < minA) minA = d;
+            if (d > maxA) maxA = d;
+          }
+          let minB = Infinity, maxB = -Infinity;
+          for (const pt of b.poly2d) {
+            const d = pt.x * nx + pt.y * ny;
+            if (d < minB) minB = d;
+            if (d > maxB) maxB = d;
+          }
+          if (maxA <= minB + eps) {
+            const dotCam = nx * camDir.x + ny * camDir.y;
+            if (Math.abs(dotCam) > 0.001) return dotCam > 0 ? -1 : 1;
+          }
+          if (maxB <= minA + eps) {
+            const dotCam = (-nx) * camDir.x + (-ny) * camDir.y;
+            if (Math.abs(dotCam) > 0.001) return dotCam > 0 ? 1 : -1;
+          }
+        }
+      }
+      return 0;
+    };
+
+    const sortPrismsTopological = (list) => {
+      list.sort((a, b) => a.depth - b.depth);
+      const n = list.length;
+      if (n <= 1 || n > 250) return list;
+      const adj = Array.from({ length: n }, () => []);
+      const inDeg = new Int32Array(n);
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          const cmp = comparePrisms3D(list[i], list[j]);
+          if (cmp < 0) {
+            adj[i].push(j);
+            inDeg[j]++;
+          } else if (cmp > 0) {
+            adj[j].push(i);
+            inDeg[i]++;
+          }
+        }
+      }
+      const used = new Uint8Array(n);
+      const ordered = [];
+      for (let step = 0; step < n; step++) {
+        let bestIdx = -1;
+        for (let i = 0; i < n; i++) {
+          if (!used[i] && inDeg[i] === 0) {
+            bestIdx = i;
+            break;
+          }
+        }
+        if (bestIdx === -1) {
+          let minDeg = Infinity;
+          for (let i = 0; i < n; i++) {
+            if (!used[i] && inDeg[i] < minDeg) {
+              minDeg = inDeg[i];
+              bestIdx = i;
+            }
+          }
+        }
+        used[bestIdx] = 1;
+        ordered.push(list[bestIdx]);
+        for (const nxt of adj[bestIdx]) {
+          inDeg[nxt]--;
+        }
+      }
+      return ordered;
     };
 
     const makeLocalToWorld = (item) => {
@@ -1617,235 +2364,227 @@
       return makeLocalPolygon(item, pts);
     };
 
-    const renderFurnitureItem3D = (item, rgb, stroke, lineW, zH, bias) => {
+    const renderFurnitureItem3D = (item, rgb, stroke, lineW, zH, isFloorMat) => {
       const box = makeLocalToWorld(item);
-      const part = (nx0, ny0, nx1, ny1, z0, z1, pRgb = rgb, pStroke = stroke, pLineW = lineW, label = null, bOff = 0) => {
-        addBox3D(box(nx0, ny0, nx1, ny1), z0, z1, pRgb, pStroke, pLineW, item.id, label, bias + bOff);
+      if (isFloorMat) {
+        const matH = Math.min(2, zH);
+        const outer = box(-0.5, -0.5, 0.5, 0.5).map(v => ({ x: v.x, y: v.y, z: matH }));
+        const inner = box(-0.43, -0.43, 0.43, 0.43).map(v => ({ x: v.x, y: v.y, z: matH + 0.2 }));
+        if (isSketch) {
+          const fl = sketchItemFlags.get(item.id) || {};
+          const rStroke = fl.isBad ? '#b02424' : fl.isSel ? '#9c5e0e' : 'rgba(24, 28, 34, 0.72)';
+          const iStroke = fl.isBad ? 'rgba(176, 36, 36, 0.55)' : fl.isSel ? 'rgba(156, 94, 14, 0.6)' : 'rgba(24, 28, 34, 0.38)';
+          floorQuads.push(makeQuadObj(outer, shadeArchitecturalSketch(rgb, { x: 0, y: 0, z: 1 }, 0.94, fl.isBad, fl.isSel), rStroke, fl.isSel || fl.isBad ? 1.8 : 1.15, 0, item.id, null));
+          floorQuads.push(makeQuadObj(inner, shadeArchitecturalSketch(
+            [Math.min(255, Math.round(rgb[0] * 1.08)), Math.min(255, Math.round(rgb[1] * 1.08)), Math.min(255, Math.round(rgb[2] * 1.08))],
+            { x: 0, y: 0, z: 1 }, 0.94, fl.isBad, fl.isSel), iStroke, 0.65, 0, item.id, null));
+        } else {
+          floorQuads.push(makeQuadObj(outer, shadeArchitecturalCel(rgb, { x: 0, y: 0, z: 1 }, 0.92), stroke, lineW, 0, item.id, null));
+          floorQuads.push(makeQuadObj(inner, shadeArchitecturalCel(
+            [Math.min(255, Math.round(rgb[0] * 1.12)), Math.min(255, Math.round(rgb[1] * 1.12)), Math.min(255, Math.round(rgb[2] * 1.12))],
+            { x: 0, y: 0, z: 1 }, 0.92), stroke, 0.7, 0, item.id, null));
+        }
+        return;
+      }
+
+      const part = (nx0, ny0, nx1, ny1, z0, z1, pRgb = rgb, pStroke = stroke, pLineW = lineW, label = null) => {
+        addBox3D(box(nx0, ny0, nx1, ny1), z0, z1, pRgb, pStroke, pLineW, item.id, label);
       };
       const tint = (f) => [Math.min(255, Math.round(rgb[0] * f)), Math.min(255, Math.round(rgb[1] * f)), Math.min(255, Math.round(rgb[2] * f))];
-      const darkTrim = [52, 54, 64];
-      const woodWarm = [146, 108, 72];
+      const darkTrim = [24, 25, 29]; // Blackened Steel
+      const woodWarm = [216, 200, 176]; // White Oak
+      const satinBrass = [200, 169, 110]; // Satin Brass
 
       switch (item.type) {
         case 'divider': {
           const geom = getDividerGeometry(item);
+          const capZ = Math.max(2, zH - 3);
           geom.segments.forEach((seg, idx) => {
-            addBox3D(seg.poly, 0, zH, rgb, stroke, lineW, item.id, null, bias);
-            // Subtle upper & lower frame plinth lines (label on top face so plinth never paints over it)
-            addBox3D(seg.poly, Math.max(0, zH - 3), zH + 0.5, tint(1.12), stroke, lineW * 0.85, item.id, idx === 1 ? item.name : null, bias + 1);
+            addBox3D(seg.poly, 0, capZ, rgb, stroke, lineW, item.id, null);
+            addBox3D(seg.poly, capZ, zH, tint(1.12), stroke, lineW * 0.85, item.id, idx === 1 ? item.name : null);
           });
-          // Vertical hinge rods at interior joints 1..3
+          // Top brass hinge caps at interior joints 1..3 (zero overlap with panel interiors)
           for (let j = 1; j <= 3; j++) {
             const jp = geom.nodes[j];
-            const hr = 1.6;
+            const hr = 1.8;
             const hingePoly = [
               { x: jp.x - hr, y: jp.y - hr },
               { x: jp.x + hr, y: jp.y - hr },
               { x: jp.x + hr, y: jp.y + hr },
               { x: jp.x - hr, y: jp.y + hr }
             ];
-            addBox3D(hingePoly, 0, zH + 1, [200, 169, 110], stroke, 0.9, item.id, null, bias + 1.5);
+            addBox3D(hingePoly, zH, zH + 1.8, satinBrass, stroke, 0.9, item.id, null);
           }
           break;
         }
         case 'bed': {
           const frameZ = Math.max(8, Math.round(zH * 0.44));
           const headX = Math.min(-0.36, -0.5 + 10 / Math.max(40, item.w));
-          part(-0.5, -0.5, 0.5, 0.5, 0, frameZ, tint(0.78), stroke, lineW, null, 0);
-          part(-0.48, -0.48, 0.49, 0.48, frameZ, zH, tint(1.06), stroke, lineW, null, 1);
-          // Duvet blanket covering foot 60% of the bed
-          part(-0.1, -0.49, 0.495, 0.49, zH * 0.65, zH + 2, tint(0.9), stroke, lineW * 0.9, item.name, 2);
-          // Tall headboard
-          part(-0.5, -0.5, headX, 0.5, 0, zH + 38, darkTrim, stroke, lineW, null, 2.5);
-          // Two pillows
+          // Tall headboard (cleanly behind base and mattress)
+          part(-0.5, -0.5, headX, 0.5, 0, zH + 38, darkTrim, stroke, lineW, null);
+          // Bed base frame & mattress (strictly in front of headX)
+          part(headX, -0.5, 0.5, 0.5, 0, frameZ, tint(0.78), stroke, lineW, null);
+          part(headX, -0.48, 0.48, 0.48, frameZ, zH, tint(1.06), stroke, lineW, null);
+          // Duvet blanket resting cleanly on top of mattress (zH..zH+3)
+          part(-0.08, -0.48, 0.485, 0.48, zH, zH + 3, [232, 230, 224], stroke, lineW * 0.9, item.name);
+          // Two pillows resting cleanly on top of mattress
           const pX1 = headX + Math.min(0.22, 32 / Math.max(40, item.w));
           if (item.h >= 105) {
-            part(headX + 0.02, -0.42, pX1, -0.04, zH, zH + 9, [215, 222, 232], stroke, 0.85, null, 3);
-            part(headX + 0.02, 0.04, pX1, 0.42, zH, zH + 9, [215, 222, 232], stroke, 0.85, null, 3);
+            part(headX + 0.02, -0.42, pX1, -0.04, zH, zH + 9, [242, 240, 234], stroke, 0.85, null);
+            part(headX + 0.02, 0.04, pX1, 0.42, zH, zH + 9, [242, 240, 234], stroke, 0.85, null);
           } else {
-            part(headX + 0.02, -0.34, pX1, 0.34, zH, zH + 9, [215, 222, 232], stroke, 0.85, null, 3);
+            part(headX + 0.02, -0.34, pX1, 0.34, zH, zH + 9, [242, 240, 234], stroke, 0.85, null);
           }
           break;
         }
         case 'desk': {
           const topZ = Math.max(4, zH - 4);
           // 4 slim corner legs
-          part(-0.47, -0.45, -0.40, -0.37, 0, topZ, darkTrim, stroke, lineW * 0.85, null, 0);
-          part(0.40, -0.45, 0.47, -0.37, 0, topZ, darkTrim, stroke, lineW * 0.85, null, 0);
-          part(-0.47, 0.37, -0.40, 0.45, 0, topZ, darkTrim, stroke, lineW * 0.85, null, 0);
-          part(0.40, 0.37, 0.47, 0.45, 0, topZ, darkTrim, stroke, lineW * 0.85, null, 0);
-          // Rear cross-brace
-          part(-0.42, -0.43, 0.42, -0.38, Math.round(topZ * 0.65), topZ, darkTrim, stroke, 0.8, null, 0.5);
-          // Tabletop slab
-          part(-0.5, -0.5, 0.5, 0.5, topZ, zH, tint(1.04), stroke, lineW, null, 2);
-          // Subtle desk mat / keyboard silhouette (carries label so it stays crisp above mat)
-          part(-0.24, -0.14, 0.24, 0.26, zH, zH + 1.2, darkTrim, stroke, 0.7, item.name, 3);
+          part(-0.47, -0.45, -0.40, -0.37, 0, topZ, darkTrim, stroke, lineW * 0.85, null);
+          part(0.40, -0.45, 0.47, -0.37, 0, topZ, darkTrim, stroke, lineW * 0.85, null);
+          part(-0.47, 0.37, -0.40, 0.45, 0, topZ, darkTrim, stroke, lineW * 0.85, null);
+          part(0.40, 0.37, 0.47, 0.45, 0, topZ, darkTrim, stroke, lineW * 0.85, null);
+          // Rear cross-brace (strictly between legs)
+          part(-0.40, -0.43, 0.40, -0.38, Math.round(topZ * 0.65), topZ, darkTrim, stroke, 0.8, null);
+          // Tabletop slab & mat
+          part(-0.5, -0.5, 0.5, 0.5, topZ, zH, tint(1.04), stroke, lineW, null);
+          part(-0.24, -0.14, 0.24, 0.26, zH, zH + 1.2, darkTrim, stroke, 0.7, item.name);
           break;
         }
         case 'chair': {
           const seatZ = Math.min(zH - 12, Math.max(20, Math.round(zH * 0.52)));
           const seatBot = Math.max(12, seatZ - 6);
-          // 4 legs
-          part(-0.44, -0.44, -0.34, -0.34, 0, seatBot, darkTrim, stroke, lineW * 0.8, null, 0);
-          part(0.34, -0.44, 0.44, -0.34, 0, seatBot, darkTrim, stroke, lineW * 0.8, null, 0);
-          part(-0.44, 0.34, -0.34, 0.44, 0, seatBot, darkTrim, stroke, lineW * 0.8, null, 0);
-          part(0.34, 0.34, 0.44, 0.44, 0, seatBot, darkTrim, stroke, lineW * 0.8, null, 0);
+          part(-0.44, -0.44, -0.34, -0.34, 0, seatBot, darkTrim, stroke, lineW * 0.8, null);
+          part(0.34, -0.44, 0.44, -0.34, 0, seatBot, darkTrim, stroke, lineW * 0.8, null);
+          part(-0.44, 0.34, -0.34, 0.44, 0, seatBot, darkTrim, stroke, lineW * 0.8, null);
+          part(0.34, 0.34, 0.44, 0.44, 0, seatBot, darkTrim, stroke, lineW * 0.8, null);
           // Seat cushion
-          part(-0.46, -0.44, 0.46, 0.46, seatBot, seatZ, rgb, stroke, lineW, null, 1.5);
+          part(-0.46, -0.44, 0.46, 0.46, seatBot, seatZ, rgb, stroke, lineW, null);
           // Backrest
-          part(-0.44, -0.48, 0.44, -0.32, seatZ, zH, tint(1.08), stroke, lineW, null, 2.5);
-          // Armrests if wide enough
+          part(-0.44, -0.48, 0.44, -0.32, seatZ, zH, tint(1.08), stroke, lineW, null);
+          // Armrests strictly in front of backrest (-0.32..0.36)
           if (item.w >= 46 && zH >= 65) {
             const armTop = Math.round(seatZ + (zH - seatZ) * 0.45);
-            part(-0.50, -0.38, -0.38, 0.36, seatZ, armTop, tint(0.9), stroke, 0.85, null, 2);
-            part(0.38, -0.38, 0.50, 0.36, seatZ, armTop, tint(0.9), stroke, 0.85, null, 2);
+            part(-0.50, -0.32, -0.38, 0.36, seatZ, armTop, tint(0.9), stroke, 0.85, null);
+            part(0.38, -0.32, 0.50, 0.36, seatZ, armTop, tint(0.9), stroke, 0.85, null);
           }
-          // Transparent crown label plane so chair armrests/backrest do not clip its own name
-          pushQuad(box(-0.46, -0.44, 0.46, 0.46).map(v => ({ x: v.x, y: v.y, z: zH + 1 })), 'transparent', 'transparent', 0, bias + 3.5, null, item.name);
+          itemLabelsMap.set(item.id, { text: item.name, pt: p3(item.x, item.y, zH + 2), span: Math.max(item.w, item.h) * t.scale });
           break;
         }
         case 'sofa': {
           if (zH <= 52) {
-            // Puff / Ottoman
-            addBox3D(makeCirclePoly(item, 0.48, 0.48, 8), 0, Math.round(zH * 0.35), darkTrim, stroke, lineW * 0.9, item.id, null, bias);
-            addBox3D(makeCirclePoly(item, 0.49, 0.49, 8), Math.round(zH * 0.35), zH, tint(1.05), stroke, lineW, item.id, item.name, bias + 1.5);
+            addBox3D(makeCirclePoly(item, 0.48, 0.48, 8), 0, Math.round(zH * 0.35), darkTrim, stroke, lineW * 0.9, item.id, null);
+            addBox3D(makeCirclePoly(item, 0.49, 0.49, 8), Math.round(zH * 0.35), zH, tint(1.05), stroke, lineW, item.id, item.name);
           } else {
             const baseZ = Math.max(6, Math.round(zH * 0.24));
             const seatZ = Math.round(zH * 0.52);
             const armZ = Math.round(zH * 0.72);
-            part(-0.5, -0.5, 0.5, 0.5, 0, baseZ, darkTrim, stroke, lineW, null, 0);
-            // Left & right seat cushions
-            part(-0.38, -0.32, -0.01, 0.48, baseZ, seatZ, tint(1.06), stroke, lineW * 0.9, null, 1);
-            part(0.01, -0.32, 0.38, 0.48, baseZ, seatZ, tint(1.06), stroke, lineW * 0.9, item.name, 1);
-            // Armrests
-            part(-0.5, -0.48, -0.37, 0.48, baseZ, armZ, tint(0.92), stroke, lineW, null, 2);
-            part(0.37, -0.48, 0.5, 0.48, baseZ, armZ, tint(0.92), stroke, lineW, null, 2);
-            // Backrest
-            part(-0.48, -0.5, 0.48, -0.28, baseZ, zH, tint(0.98), stroke, lineW, null, 2.5);
+            part(-0.5, -0.5, 0.5, 0.5, 0, baseZ, darkTrim, stroke, lineW, null);
+            part(-0.48, -0.5, 0.48, -0.28, baseZ, zH, tint(0.98), stroke, lineW, null);
+            part(-0.5, -0.28, -0.37, 0.48, baseZ, armZ, tint(0.92), stroke, lineW, null);
+            part(0.37, -0.28, 0.5, 0.48, baseZ, armZ, tint(0.92), stroke, lineW, null);
+            part(-0.37, -0.28, -0.01, 0.48, baseZ, seatZ, tint(1.06), stroke, lineW * 0.9, null);
+            part(0.01, -0.28, 0.37, 0.48, baseZ, seatZ, tint(1.06), stroke, lineW * 0.9, item.name);
           }
           break;
         }
         case 'tv': {
-          part(-0.5, -0.5, 0.5, 0.5, 0, zH, rgb, stroke, lineW, item.name, 0);
-          // Front console shelf niche on +y face
-          part(-0.44, 0.46, 0.44, 0.51, Math.round(zH * 0.35), Math.round(zH * 0.78), darkTrim, stroke, 0.75, null, 1);
-          // Central TV neck stand
-          part(-0.08, -0.10, 0.08, 0.14, zH, zH + 8, darkTrim, stroke, 0.9, null, 1.5);
-          // Wide TV panel screen
+          part(-0.5, -0.5, 0.5, 0.5, 0, zH, rgb, stroke, lineW, item.name);
+          part(-0.44, 0.50, 0.44, 0.525, Math.round(zH * 0.35), Math.round(zH * 0.78), darkTrim, stroke, 0.75, null);
+          part(-0.08, -0.10, 0.08, 0.14, zH, zH + 7, darkTrim, stroke, 0.9, null);
           const tvThickness = Math.min(0.14, Math.max(0.04, 3 / Math.max(12, item.h)));
-          part(-0.44, -tvThickness, 0.44, tvThickness, zH + 6, zH + 56, [24, 36, 54], '#6b93b8', 1.2, null, 2.5);
+          part(-0.44, -tvThickness, 0.44, tvThickness, zH + 7, zH + 56, [24, 36, 54], '#6b93b8', 1.2, null);
           break;
         }
         case 'wardrobe': {
           const topCap = Math.max(8, zH - 5);
-          part(-0.5, -0.5, 0.5, 0.46, 0, topCap, rgb, stroke, lineW, null, 0);
-          // Top cornice
-          part(-0.51, -0.51, 0.51, 0.51, topCap, zH, tint(1.08), stroke, lineW, item.name, 1.5);
-          // Front double doors + metallic vertical handles on +y
-          part(-0.48, 0.46, -0.015, 0.50, 4, topCap - 2, tint(0.92), stroke, 0.9, null, 1);
-          part(0.015, 0.46, 0.48, 0.50, 4, topCap - 2, tint(0.92), stroke, 0.9, null, 1);
-          part(-0.06, 0.49, -0.025, 0.52, Math.round(zH * 0.38), Math.round(zH * 0.62), [210, 214, 224], stroke, 0.7, null, 2);
-          part(0.025, 0.49, 0.06, 0.52, Math.round(zH * 0.38), Math.round(zH * 0.62), [210, 214, 224], stroke, 0.7, null, 2);
+          part(-0.5, -0.5, 0.5, 0.46, 0, topCap, rgb, stroke, lineW, null);
+          part(-0.51, -0.51, 0.51, 0.51, topCap, zH, tint(1.08), stroke, lineW, item.name);
+          part(-0.48, 0.46, -0.015, 0.50, 4, topCap, tint(0.92), stroke, 0.9, null);
+          part(0.015, 0.46, 0.48, 0.50, 4, topCap, tint(0.92), stroke, 0.9, null);
+          part(-0.06, 0.50, -0.025, 0.525, Math.round(zH * 0.38), Math.round(zH * 0.62), [210, 214, 224], stroke, 0.7, null);
+          part(0.025, 0.50, 0.06, 0.525, Math.round(zH * 0.38), Math.round(zH * 0.62), [210, 214, 224], stroke, 0.7, null);
           break;
         }
         case 'nightstand': {
           const topZ = Math.max(8, zH - 4);
-          part(-0.48, -0.48, 0.48, 0.46, 0, topZ, rgb, stroke, lineW, null, 0);
-          part(-0.51, -0.5, 0.51, 0.5, topZ, zH, tint(1.1), stroke, lineW, item.name, 2);
-          // 2 drawer fronts on +y
-          part(-0.42, 0.45, 0.42, 0.5, Math.round(topZ * 0.14), Math.round(topZ * 0.50), tint(0.88), stroke, 0.85, null, 1);
-          part(-0.42, 0.45, 0.42, 0.5, Math.round(topZ * 0.54), Math.round(topZ * 0.90), tint(0.88), stroke, 0.85, null, 1.2);
+          part(-0.48, -0.48, 0.48, 0.46, 0, topZ, rgb, stroke, lineW, null);
+          part(-0.51, -0.5, 0.51, 0.5, topZ, zH, tint(1.1), stroke, lineW, item.name);
+          part(-0.42, 0.46, 0.42, 0.50, Math.round(topZ * 0.14), Math.round(topZ * 0.49), tint(0.88), stroke, 0.85, null);
+          part(-0.42, 0.46, 0.42, 0.50, Math.round(topZ * 0.53), Math.round(topZ * 0.88), tint(0.88), stroke, 0.85, null);
           break;
         }
         case 'shelf': {
-          // Vertical side uprights + open horizontal shelves
-          part(-0.5, -0.48, -0.40, 0.48, 0, zH, tint(0.88), stroke, lineW, null, 0);
-          part(0.40, -0.48, 0.5, 0.48, 0, zH, tint(0.88), stroke, lineW, null, 0);
-          part(-0.44, -0.5, 0.44, -0.42, 0, zH, tint(0.68), stroke, 0.8, null, 0);
-          const tiers = zH >= 150 ? 5 : zH >= 90 ? 4 : 3;
+          const bodyTop = Math.max(8, zH - 4);
+          // Non-intersecting side uprights, recessed back panel, and top cornice
+          part(-0.5, -0.5, -0.40, 0.5, 0, bodyTop, tint(0.88), stroke, lineW, null);
+          part(0.40, -0.5, 0.5, 0.5, 0, bodyTop, tint(0.88), stroke, lineW, null);
+          part(-0.40, -0.5, 0.40, -0.43, 0, bodyTop, tint(0.68), stroke, 0.8, null);
+          part(-0.5, -0.5, 0.5, 0.5, bodyTop, zH, tint(1.06), stroke, lineW, item.name);
+          const tiers = zH >= 150 ? 4 : zH >= 90 ? 3 : 2;
           for (let ti = 0; ti < tiers; ti++) {
-            const tz = Math.round((ti / (tiers - 1)) * Math.max(4, zH - 4));
-            const isTop = ti === tiers - 1;
-            part(-0.5, -0.48, 0.5, 0.5, tz, tz + 4, tint(isTop ? 1.06 : 0.96), stroke, lineW * 0.9, isTop ? item.name : null, isTop ? 2 : 0.8 + ti * 0.15);
-            if (!isTop && ti >= 1) {
-              // Subtle book/storage block accent on shelf
-              part(-0.34, -0.25, -0.10, 0.32, tz + 4, Math.min(zH - 4, tz + Math.round((zH - 4) / (tiers - 1) * 0.68)), woodWarm, stroke, 0.7, null, 1.0 + ti * 0.15);
+            const tz = Math.round((ti / tiers) * bodyTop);
+            const nextTz = Math.round(((ti + 1) / tiers) * bodyTop);
+            part(-0.40, -0.43, 0.40, 0.50, tz, tz + 4, tint(0.96), stroke, lineW * 0.9, null);
+            if (ti >= 1 && nextTz > tz + 10) {
+              part(-0.34, -0.25, -0.10, 0.32, tz + 4, Math.min(nextTz - 1, tz + Math.round((nextTz - tz) * 0.68)), woodWarm, stroke, 0.7, null);
             }
           }
           break;
         }
         case 'pc': {
           const baseZ = Math.round(zH * 0.48);
-          part(-0.5, -0.5, 0.5, 0.5, 0, baseZ, rgb, stroke, lineW, null, 0);
-          // Tower on top
-          part(-0.34, -0.38, 0.34, 0.38, baseZ, zH, [24, 28, 32], '#6e9887', lineW, item.name, 1.5);
-          // Front/side RGB LED strip accent
-          part(0.32, -0.34, 0.36, 0.34, baseZ + 4, zH - 4, [110, 152, 135], '#6e9887', 0.9, null, 2.2);
+          part(-0.5, -0.5, 0.5, 0.5, 0, baseZ, rgb, stroke, lineW, null);
+          part(-0.34, -0.38, 0.34, 0.38, baseZ, zH, [24, 28, 32], '#6e9887', lineW, item.name);
+          part(0.34, -0.34, 0.37, 0.34, baseZ + 4, zH - 4, [110, 152, 135], '#6e9887', 0.9, null);
           break;
         }
         case 'easel': {
           const ledgeZ = Math.max(18, Math.round(zH * 0.35));
           const topZ = Math.max(ledgeZ + 20, Math.round(zH * 0.96));
-          // 3 tripod legs
-          part(-0.44, 0.24, -0.32, 0.42, 0, ledgeZ, woodWarm, stroke, 0.9, null, 0);
-          part(0.32, 0.24, 0.44, 0.42, 0, ledgeZ, woodWarm, stroke, 0.9, null, 0);
-          part(-0.07, -0.46, 0.07, -0.28, 0, topZ, woodWarm, stroke, 0.9, null, 0);
-          // Central mast + horizontal ledge
-          part(-0.07, -0.06, 0.07, 0.10, Math.round(ledgeZ * 0.5), zH, woodWarm, stroke, lineW, null, 1);
-          part(-0.46, 0.08, 0.46, 0.34, ledgeZ - 4, ledgeZ + 2, rgb, stroke, lineW, null, 1.5);
-          // Canvas artwork panel
-          part(-0.42, 0.06, 0.42, 0.18, ledgeZ + 2, Math.round(zH * 0.88), [235, 228, 212], stroke, lineW, item.name, 2.2);
+          part(-0.44, 0.24, -0.32, 0.42, 0, ledgeZ - 4, woodWarm, stroke, 0.9, null);
+          part(0.32, 0.24, 0.44, 0.42, 0, ledgeZ - 4, woodWarm, stroke, 0.9, null);
+          part(-0.07, -0.46, 0.07, -0.28, 0, topZ, woodWarm, stroke, 0.9, null);
+          part(-0.07, -0.06, 0.07, 0.10, Math.round(ledgeZ * 0.5), zH, woodWarm, stroke, lineW, null);
+          part(-0.46, 0.10, 0.46, 0.34, ledgeZ - 4, ledgeZ + 2, rgb, stroke, lineW, null);
+          part(-0.42, 0.10, 0.42, 0.22, ledgeZ + 2, Math.round(zH * 0.88), [235, 228, 212], stroke, lineW, item.name);
           break;
         }
         case 'mirror': {
-          part(-0.5, -0.5, 0.5, 0.5, 0, zH, darkTrim, stroke, lineW, item.name, 0);
-          // Reflective inner glass panel on +y face
-          part(-0.42, -0.2, 0.42, 0.56, 6, Math.max(10, zH - 6), [155, 178, 198], '#9bb8d3', 1.1, null, 1.5);
+          part(-0.5, -0.5, 0.5, 0.5, 0, zH, darkTrim, stroke, lineW, item.name);
+          part(-0.42, 0.50, 0.42, 0.54, 6, Math.max(10, zH - 6), [155, 178, 198], '#9bb8d3', 1.1, null);
           break;
         }
         case 'lamp': {
           const stemTop = Math.max(20, zH - 26);
-          // Octagonal weighted floor base
-          addBox3D(makeCirclePoly(item, 0.36, 0.36, 8), 0, 4, darkTrim, stroke, lineW * 0.9, item.id, null, bias);
-          // Slim vertical stem
-          part(-0.08, -0.08, 0.08, 0.08, 4, stemTop, [205, 165, 92], stroke, 0.85, null, 1);
-          // Glowing lampshade
-          addBox3D(makeCirclePoly(item, 0.48, 0.48, 8), stemTop, zH, [248, 210, 120], '#fbbf24', lineW, item.id, item.name, bias + 2);
+          addBox3D(makeCirclePoly(item, 0.36, 0.36, 8), 0, 4, darkTrim, stroke, lineW * 0.9, item.id, null);
+          part(-0.08, -0.08, 0.08, 0.08, 4, stemTop, [205, 165, 92], stroke, 0.85, null);
+          addBox3D(makeCirclePoly(item, 0.48, 0.48, 8), stemTop, zH, [248, 210, 120], '#fbbf24', lineW, item.id, item.name);
           break;
         }
         case 'plant': {
           const potH = Math.max(8, Math.round(zH * 0.36));
-          // Octagonal terracotta/slate pot
-          addBox3D(makeCirclePoly(item, 0.34, 0.34, 8), 0, potH, [168, 96, 68], stroke, lineW * 0.9, item.id, null, bias);
-          // Lower & upper octagonal foliage crown
-          addBox3D(makeCirclePoly(item, 0.48, 0.48, 8), Math.max(4, potH - 4), Math.round(zH * 0.76), [28, 150, 96], stroke, lineW, item.id, null, bias + 1);
-          addBox3D(makeCirclePoly(item, 0.34, 0.34, 8), Math.round(zH * 0.72), zH, [46, 184, 120], stroke, lineW, item.id, item.name, bias + 2);
+          const midH = Math.max(potH + 4, Math.round(zH * 0.74));
+          addBox3D(makeCirclePoly(item, 0.34, 0.34, 8), 0, potH, [168, 96, 68], stroke, lineW * 0.9, item.id, null);
+          addBox3D(makeCirclePoly(item, 0.48, 0.48, 8), potH, midH, [28, 150, 96], stroke, lineW, item.id, null);
+          addBox3D(makeCirclePoly(item, 0.34, 0.34, 8), midH, zH, [46, 184, 120], stroke, lineW, item.id, item.name);
           break;
         }
         case 'appliance': {
           const topCap = Math.max(8, zH - 4);
-          part(-0.5, -0.5, 0.5, 0.5, 0, topCap, rgb, stroke, lineW, null, 0);
-          part(-0.5, -0.5, 0.5, 0.5, topCap, zH, tint(1.14), stroke, lineW, item.name, 1.5);
-          // Front door/vent panel accent on +y
-          part(-0.42, 0.47, 0.42, 0.52, Math.round(zH * 0.14), Math.round(zH * 0.86), [78, 84, 96], stroke, 0.85, null, 1.2);
-          break;
-        }
-        case 'rug': {
-          const matH = Math.min(3, zH);
-          const rugBias = Math.min(bias, -4500);
-          addBox3D(box(-0.5, -0.5, 0.5, 0.5), 0, matH, rgb, stroke, lineW, item.id, null, rugBias);
-          addBox3D(box(-0.43, -0.43, 0.43, 0.43), matH, matH + 0.4, tint(1.16), stroke, 0.7, item.id, null, rugBias + 1);
+          part(-0.5, -0.5, 0.5, 0.5, 0, topCap, rgb, stroke, lineW, null);
+          part(-0.5, -0.5, 0.5, 0.5, topCap, zH, tint(1.14), stroke, lineW, item.name);
+          part(-0.42, 0.50, 0.42, 0.53, Math.round(zH * 0.14), Math.round(zH * 0.86), [78, 84, 96], stroke, 0.85, null);
           break;
         }
         default: {
-          // Box / generic furniture with subtle top cap chamfer
           if (zH > 8) {
-            part(-0.5, -0.5, 0.5, 0.5, 0, zH - 3, rgb, stroke, lineW, null, 0);
-            part(-0.5, -0.5, 0.5, 0.5, zH - 3, zH, tint(1.08), stroke, lineW, item.name, 1.5);
+            part(-0.5, -0.5, 0.5, 0.5, 0, zH - 3, rgb, stroke, lineW, null);
+            part(-0.5, -0.5, 0.5, 0.5, zH - 3, zH, tint(1.08), stroke, lineW, item.name);
           } else {
             const polys = getItemPolygons(item);
             polys.forEach((poly, idx) => {
-              addBox3D(poly, 0, zH, rgb, stroke, lineW, item.id, idx === 0 ? item.name : null, bias);
+              addBox3D(poly, 0, zH, rgb, stroke, lineW, item.id, idx === 0 ? item.name : null);
             });
           }
           break;
@@ -1853,42 +2592,55 @@
       }
     };
 
-    // 2. Cutaway Back vs Front Walls
-    const camX = Math.sin(t.yawRad);
-    const camY = Math.cos(t.yawRad);
+    // 2. Cutaway Back vs Front Walls (Generalized Arbitrary Wall Vector Logic)
+    const cx = W / 2;
+    const cy = H / 2;
     const wallSpecs = [
-      { id: 'top',    a: { x: 0, y: 0 }, b: { x: W, y: 0 }, isBack: camY > 0 },
-      { id: 'bottom', a: { x: 0, y: H }, b: { x: W, y: H }, isBack: camY <= 0 },
-      { id: 'left',   a: { x: 0, y: 0 }, b: { x: 0, y: H }, isBack: camX > 0 },
-      { id: 'right',  a: { x: W, y: 0 }, b: { x: W, y: H }, isBack: camX <= 0 }
-    ];
+      { id: 'top',    a: { x: 0, y: 0 }, b: { x: W, y: 0 } },
+      { id: 'bottom', a: { x: 0, y: H }, b: { x: W, y: H } },
+      { id: 'left',   a: { x: 0, y: 0 }, b: { x: 0, y: H } },
+      { id: 'right',  a: { x: W, y: 0 }, b: { x: W, y: H } }
+    ].map(w => {
+      const mx = (w.a.x + w.b.x) / 2;
+      const my = (w.a.y + w.b.y) / 2;
+      const vx = mx - cx;
+      const vy = my - cy;
+      const isBack = (vx * (-sY) + vy * (-cY)) > 0;
+      return { ...w, isBack };
+    });
 
     for (const w of wallSpecs) {
-      const hWall = w.isBack ? WALL_Z : 10;
-      const pts = [
-        { x: w.a.x, y: w.a.y, z: 0 },
-        { x: w.b.x, y: w.b.y, z: 0 },
-        { x: w.b.x, y: w.b.y, z: hWall },
-        { x: w.a.x, y: w.a.y, z: hWall }
-      ];
-      pushQuad(
-        pts,
-        w.isBack ? 'rgba(30, 30, 38, 0.65)' : 'rgba(63, 63, 70, 0.35)',
-        w.isBack ? 'rgba(113, 113, 122, 0.45)' : 'rgba(113, 113, 122, 0.6)',
-        1,
-        w.isBack ? -3000 : 1200,
-        null
-      );
+      if (w.isBack) {
+        backWallQuads.push(makeQuadObj(
+          [{ x: w.a.x, y: w.a.y, z: 0 }, { x: w.b.x, y: w.b.y, z: 0 }, { x: w.b.x, y: w.b.y, z: WALL_Z }, { x: w.a.x, y: w.a.y, z: WALL_Z }],
+          isSketch ? 'rgba(239, 236, 228, 0.88)' : 'rgba(26, 28, 34, 0.78)',
+          isSketch ? 'rgba(26, 30, 38, 0.85)' : '#383c48',
+          isSketch ? 1.25 : 1.0, 0
+        ));
+        backWallQuads.push(makeQuadObj(
+          [{ x: w.a.x, y: w.a.y, z: 0 }, { x: w.b.x, y: w.b.y, z: 0 }, { x: w.b.x, y: w.b.y, z: 8 }, { x: w.a.x, y: w.a.y, z: 8 }],
+          isSketch ? 'rgba(218, 212, 200, 0.72)' : 'rgba(214, 211, 205, 0.78)',
+          isSketch ? 'rgba(40, 44, 52, 0.35)' : 'rgba(113, 113, 122, 0.35)',
+          0.8, 10
+        ));
+      } else {
+        cutawayQuads.push(makeQuadObj(
+          [{ x: w.a.x, y: w.a.y, z: 0 }, { x: w.b.x, y: w.b.y, z: 0 }, { x: w.b.x, y: w.b.y, z: 6 }, { x: w.a.x, y: w.a.y, z: 6 }],
+          isSketch ? 'rgba(234, 230, 221, 0.32)' : 'rgba(26, 28, 34, 0.25)',
+          isSketch ? 'rgba(38, 44, 56, 0.50)' : 'rgba(90, 140, 178, 0.50)',
+          isSketch ? 1.15 : 1.2, 0
+        ));
+      }
     }
 
-    // Windows in 3D
+    // Windows in 3D (Architectural Glazing with Specular Reflection Slashes)
     for (const win of state.room.windows) {
       const off = Number(win.offset) || 0;
       const wLen = Number(win.width) || 100;
       const spec = wallSpecs.find(s => s.id === win.wall);
       const isBack = !spec || spec.isBack;
-      const z0 = isBack ? 95 : 2;
-      const z1 = isBack ? 205 : 10;
+      const z0 = isBack ? 95 : 1;
+      const z1 = isBack ? 205 : 6;
       let wa, wb;
       if (win.wall === 'top' || win.wall === 'bottom') {
         const y = win.wall === 'top' ? 0 : H;
@@ -1899,95 +2651,320 @@
         wa = { x, y: off };
         wb = { x, y: off + wLen };
       }
-      pushQuad(
+      const winQuad = makeQuadObj(
         [{ x: wa.x, y: wa.y, z: z0 }, { x: wb.x, y: wb.y, z: z0 }, { x: wb.x, y: wb.y, z: z1 }, { x: wa.x, y: wa.y, z: z1 }],
-        'rgba(107, 147, 184, 0.24)',
-        '#6b93b8',
-        1.5,
-        isBack ? -2800 : 1250
+        isSketch ? 'rgba(110, 158, 198, 0.22)' : 'rgba(90, 140, 178, 0.26)',
+        isSketch ? '#2f5d84' : '#5a8cb2',
+        1.5, 20
       );
+      if (isBack) {
+        backWallQuads.push(winQuad);
+        const mx = (wa.x + wb.x) / 2;
+        const my = (wa.y + wb.y) / 2;
+        const mz = (z0 + z1) / 2;
+        const slashD = win.wall === 'top' || win.wall === 'bottom'
+          ? [{ x: mx - 16, y: my, z: mz - 18 }, { x: mx + 16, y: my, z: mz + 18 }]
+          : [{ x: mx, y: my - 16, z: mz - 18 }, { x: mx, y: my + 16, z: mz + 18 }];
+        backWallQuads.push(makeQuadObj(
+          [{ ...slashD[0], z: slashD[0].z }, { ...slashD[1], z: slashD[1].z }, { ...slashD[1], z: slashD[1].z + 2 }, { ...slashD[0], z: slashD[0].z + 2 }],
+          isSketch ? 'rgba(47, 93, 132, 0.44)' : 'rgba(140, 176, 209, 0.45)', 'transparent', 0, 25
+        ));
+      } else {
+        cutawayQuads.push(winQuad);
+      }
     }
 
-    // Door Leaves in 3D
+    // Door Leaves in 3D (Satin Champagne Brass thin prisms in topological sort)
     for (const door of state.room.doors) {
       const g = getDoorGeometry(door, state.room);
-      pushQuad(
-        [
-          { x: g.hx, y: g.hy, z: 0 },
-          { x: g.openEnd.x, y: g.openEnd.y, z: 0 },
-          { x: g.openEnd.x, y: g.openEnd.y, z: 205 },
-          { x: g.hx, y: g.hy, z: 205 }
-        ],
-        'rgba(200, 169, 110, 0.16)',
-        '#c8a96e',
-        1.4,
-        0
-      );
+      const dx = g.openEnd.x - g.hx;
+      const dy = g.openEnd.y - g.hy;
+      const len = Math.hypot(dx, dy) || 1;
+      const nx = (-dy / len) * 0.9;
+      const ny = (dx / len) * 0.9;
+      const doorPoly = [
+        { x: g.hx - nx, y: g.hy - ny },
+        { x: g.openEnd.x - nx, y: g.openEnd.y - ny },
+        { x: g.openEnd.x + nx, y: g.openEnd.y + ny },
+        { x: g.hx + nx, y: g.hy + ny }
+      ];
+      addBox3D(doorPoly, 0, 205, [217, 155, 38], '#d99b26', 1.4, null, null, 0.24);
     }
 
-    // 3. Furniture 3D Prisms (Procedural Archetypes)
+    // 3. Furniture 3D Prisms & Ground Contact AO Shadows
     const { bad: collisions } = computeCollisions();
     for (const item of state.items) {
       if (!item.visible) continue;
-      const isSel = item.id === state.selectedId;
+      const isSel = isInteractive && item.id === state.selectedId;
       const isBad = collisions.has(item.id);
+      sketchItemFlags.set(item.id, { isBad, isSel });
       const baseRgb = RGB_3D_PALETTE[item.color] || RGB_3D_PALETTE.zinc;
       const rgb = isBad
-        ? [196, 78, 86]
+        ? [217, 107, 107]
         : isSel
-        ? [Math.min(255, baseRgb[0] + 28), Math.min(255, baseRgb[1] + 24), Math.min(255, baseRgb[2] + 18)]
+        ? [Math.min(255, baseRgb[0] + 32), Math.min(255, baseRgb[1] + 24), Math.min(255, baseRgb[2] + 16)]
         : baseRgb;
-      const stroke = isBad ? '#d96b6b' : isSel ? '#c8a96e' : 'rgba(237, 234, 228, 0.34)';
-      const lineW = isSel || isBad ? 1.5 : 0.9;
+      const stroke = isBad ? '#d96b6b' : isSel ? '#d99b26' : 'rgba(234, 231, 223, 0.42)';
+      const lineW = isSel || isBad ? 2.0 : 1.0;
       const zH = Math.max(1, Number(item.zHeight) || 75);
-      const bias = item.ignoreCollision && zH <= 4 ? -4500 : 0;
+      const isFloorMat = item.type === 'rug' || (item.ignoreCollision && zH <= 4);
 
-      renderFurnitureItem3D(item, rgb, stroke, lineW, zH, bias);
+      if (!isFloorMat && zH > 4) {
+        const rad = degToRad(item.rot || 0);
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        if (isSketch) {
+          const sx = Math.max(-14, Math.min(14, -sketchLightVec.x * zH * 0.10));
+          const sy = Math.max(-14, Math.min(14, -sketchLightVec.y * zH * 0.10));
+          const hw = item.w * 0.5 + 2.5;
+          const hh = item.h * 0.5 + 2.5;
+          const shadowPoly = [
+            { x: -hw, y: -hh },
+            { x: hw, y: -hh },
+            { x: hw, y: hh },
+            { x: -hw, y: hh }
+          ].map(pt => ({
+            x: item.x + pt.x * cos - pt.y * sin + sx,
+            y: item.y + pt.x * sin + pt.y * cos + sy,
+            z: 0.1
+          }));
+          floorQuads.push(makeQuadObj(shadowPoly, 'rgba(38, 34, 28, 0.08)', 'transparent', 0, 5, null, null));
+
+          // Precompute faint architectural OBB construction cage + top axis center mark for round objects
+          if (zH > 12 && item.type !== 'divider') {
+            const ohw = item.w * 0.5;
+            const ohh = item.h * 0.5;
+            const localCorners = [
+              { x: -ohw, y: -ohh },
+              { x: ohw, y: -ohh },
+              { x: ohw, y: ohh },
+              { x: -ohw, y: ohh }
+            ].map(pt => ({
+              x: item.x + pt.x * cos - pt.y * sin,
+              y: item.y + pt.x * sin + pt.y * cos
+            }));
+            const bPts = localCorners.map(c => p3(c.x, c.y, 0));
+            const tPts = localCorners.map(c => p3(c.x, c.y, zH));
+            const cageLines = [];
+            for (let k = 0; k < 4; k++) {
+              const nk = (k + 1) % 4;
+              cageLines.push([bPts[k], bPts[nk]]);
+              cageLines.push([tPts[k], tPts[nk]]);
+              cageLines.push([bPts[k], tPts[k]]);
+            }
+            let cross = null;
+            if (item.type === 'lamp' || item.type === 'plant') {
+              const rx = ohw * 0.45;
+              const ry = ohh * 0.45;
+              cross = [
+                [
+                  p3(item.x - rx * cos, item.y - rx * sin, zH + 0.3),
+                  p3(item.x + rx * cos, item.y + rx * sin, zH + 0.3)
+                ],
+                [
+                  p3(item.x + ry * sin, item.y - ry * cos, zH + 0.3),
+                  p3(item.x - ry * sin, item.y + ry * cos, zH + 0.3)
+                ]
+              ];
+            }
+            sketchCages.set(item.id, { lines: cageLines, cross, isSel, isBad });
+          }
+        } else {
+          const m = 3.5;
+          const hw = item.w * 0.5;
+          const hh = item.h * 0.5;
+          const shadowPoly = [
+            { x: -hw - m, y: -hh - m },
+            { x: hw + m, y: -hh - m },
+            { x: hw + m, y: hh + m },
+            { x: -hw - m, y: hh + m }
+          ].map(pt => ({
+            x: item.x + pt.x * cos - pt.y * sin,
+            y: item.y + pt.x * sin + pt.y * cos,
+            z: 0.1
+          }));
+          floorQuads.push(makeQuadObj(shadowPoly, 'rgba(0, 0, 0, 0.34)', 'transparent', 0, 5, null, null));
+        }
+      }
+
+      renderFurnitureItem3D(item, rgb, stroke, lineW, zH, isFloorMat);
     }
 
-    // Painter's Sort & Draw All Faces
-    faces.sort((a, b) => a.depth - b.depth);
-    for (const f of faces) {
-      const pts = f.pts;
-      targetCtx.beginPath();
-      targetCtx.moveTo(pts[0].x, pts[0].y);
-      for (let i = 1; i < pts.length; i++) targetCtx.lineTo(pts[i].x, pts[i].y);
-      targetCtx.closePath();
-      if (f.fill && f.fill !== 'transparent') {
-        targetCtx.fillStyle = f.fill;
-        targetCtx.fill();
-      }
-      if (f.lineWidth > 0 && f.stroke && f.stroke !== 'transparent') {
-        targetCtx.strokeStyle = f.stroke;
-        targetCtx.lineWidth = f.lineWidth;
+    // Pass 1: Floor Rugs & Ground Shadows
+    floorQuads.sort((a, b) => a.depth - b.depth);
+    drawQuadList(floorQuads);
+    for (const q of floorQuads) {
+      if (isInteractive && q.itemId) state.hitRegions3D.push({ itemId: q.itemId, pts: q.pts });
+    }
+
+    // Pass 2: Back Walls, Baseboards & Windows
+    backWallQuads.sort((a, b) => a.depth - b.depth);
+    drawQuadList(backWallQuads);
+    if (isSketch) {
+      targetCtx.save();
+      targetCtx.strokeStyle = 'rgba(20, 24, 30, 0.22)';
+      targetCtx.lineWidth = 0.7;
+      for (const w of wallSpecs) {
+        if (!w.isBack) continue;
+        const pa = p3(w.a.x, w.a.y, WALL_Z);
+        const pb = p3(w.b.x, w.b.y, WALL_Z);
+        const dx = pb.x - pa.x;
+        const dy = pb.y - pa.y;
+        const slen = Math.hypot(dx, dy) || 1;
+        const ux = (dx / slen) * 7.5;
+        const uy = (dy / slen) * 7.5;
+        targetCtx.beginPath();
+        targetCtx.moveTo(pa.x - ux, pa.y - uy);
+        targetCtx.lineTo(pa.x, pa.y);
+        targetCtx.moveTo(pb.x, pb.y);
+        targetCtx.lineTo(pb.x + ux, pb.y + uy);
+        targetCtx.moveTo(pa.x, pa.y);
+        targetCtx.lineTo(pa.x, pa.y - 7);
+        targetCtx.moveTo(pb.x, pb.y);
+        targetCtx.lineTo(pb.x, pb.y - 7);
         targetCtx.stroke();
       }
+      targetCtx.restore();
+    }
 
-      if (f.itemId) {
-        state.hitRegions3D.push({ itemId: f.itemId, pts });
+    // Pass 3: Topological Depth-Sorted 3D Prisms (labels drawn per-item so closer items occlude occluded labels)
+    const sortedPrisms = sortPrismsTopological(prisms);
+    const firstPrismForItem = new Map();
+    const lastPrismForItem = new Map();
+    sortedPrisms.forEach((pr, idx) => {
+      if (pr.itemId) {
+        if (!firstPrismForItem.has(pr.itemId)) firstPrismForItem.set(pr.itemId, idx);
+        lastPrismForItem.set(pr.itemId, idx);
       }
-      if (f.label && pts.length >= 4) {
+      if (pr.labelQuad && pr.labelQuad.label && pr.labelQuad.pts.length >= 4 && pr.itemId && !itemLabelsMap.has(pr.itemId)) {
+        const pts = pr.labelQuad.pts;
         const lx = pts.reduce((a, q) => a + q.x, 0) / pts.length;
         const ly = pts.reduce((a, q) => a + q.y, 0) / pts.length;
         const span = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
-        if (span >= 30) {
-          targetCtx.font = '600 10px -apple-system, BlinkMacSystemFont, sans-serif';
-          targetCtx.fillStyle = '#edeae4';
-          targetCtx.textAlign = 'center';
-          targetCtx.textBaseline = 'middle';
-          targetCtx.fillText(f.label, lx, ly);
+        itemLabelsMap.set(pr.itemId, { text: pr.labelQuad.label, pt: { x: lx, y: ly }, span });
+      }
+    });
+
+    const drawItemLabel3D = (lbl) => {
+      if (!lbl || lbl.span < 28) return;
+      targetCtx.font = '600 10px -apple-system, BlinkMacSystemFont, sans-serif';
+      targetCtx.textAlign = 'center';
+      targetCtx.textBaseline = 'middle';
+      targetCtx.lineJoin = 'round';
+      targetCtx.lineWidth = isSketch ? 3.5 : 3.2;
+      targetCtx.strokeStyle = isSketch ? 'rgba(244, 241, 234, 0.90)' : 'rgba(10, 11, 13, 0.88)';
+      targetCtx.strokeText(lbl.text, lbl.pt.x, lbl.pt.y);
+      targetCtx.fillStyle = isSketch ? '#14161a' : '#F2EFE8';
+      targetCtx.fillText(lbl.text, lbl.pt.x, lbl.pt.y);
+    };
+
+    const drawSketchCage = (cage) => {
+      if (!cage) return;
+      targetCtx.save();
+      targetCtx.lineCap = 'round';
+      targetCtx.strokeStyle = cage.isBad
+        ? 'rgba(176, 36, 36, 0.22)'
+        : cage.isSel
+        ? 'rgba(156, 94, 14, 0.24)'
+        : 'rgba(20, 24, 32, 0.14)';
+      targetCtx.lineWidth = 0.65;
+      targetCtx.beginPath();
+      for (const [a, b] of cage.lines) {
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const slen = Math.hypot(dx, dy);
+        if (slen < 2) continue;
+        const ext = Math.min(8.5, slen * 0.08);
+        const ux = (dx / slen) * ext;
+        const uy = (dy / slen) * ext;
+        targetCtx.moveTo(a.x - ux, a.y - uy);
+        targetCtx.lineTo(b.x + ux, b.y + uy);
+      }
+      targetCtx.stroke();
+      targetCtx.restore();
+    };
+
+    const drawSketchPrismDetail = (meta) => {
+      if (!meta) return;
+      targetCtx.save();
+      targetCtx.lineCap = 'round';
+      targetCtx.lineJoin = 'round';
+
+      if (meta.hatches.length) {
+        for (const h of meta.hatches) {
+          targetCtx.strokeStyle = `rgba(${meta.inkRgb}, ${h[4]})`;
+          targetCtx.lineWidth = 0.68;
+          targetCtx.beginPath();
+          targetCtx.moveTo(h[0], h[1]);
+          targetCtx.lineTo(h[2], h[3]);
+          targetCtx.stroke();
         }
       }
-    }
+
+      if (meta.overshoots.length) {
+        targetCtx.strokeStyle = `rgba(${meta.inkRgb}, 0.19)`;
+        targetCtx.lineWidth = 0.65;
+        targetCtx.beginPath();
+        for (const o of meta.overshoots) {
+          targetCtx.moveTo(o[0], o[1]);
+          targetCtx.lineTo(o[2], o[3]);
+        }
+        targetCtx.stroke();
+      }
+
+      for (const e of meta.edges) {
+        targetCtx.strokeStyle = `rgba(${meta.inkRgb}, ${e.a})`;
+        targetCtx.lineWidth = e.w;
+        targetCtx.beginPath();
+        targetCtx.moveTo(e.x1, e.y1);
+        targetCtx.lineTo(e.x2, e.y2);
+        targetCtx.stroke();
+      }
+      targetCtx.restore();
+    };
+
+    sortedPrisms.forEach((pr, idx) => {
+      if (isSketch && pr.itemId && firstPrismForItem.get(pr.itemId) === idx) {
+        drawSketchCage(sketchCages.get(pr.itemId));
+      }
+      drawQuadList(pr.faces);
+      if (isSketch && pr.sketchMeta) {
+        drawSketchPrismDetail(pr.sketchMeta);
+      }
+      for (const f of pr.faces) {
+        if (isInteractive && f.itemId) state.hitRegions3D.push({ itemId: f.itemId, pts: f.pts });
+      }
+      if (pr.itemId && lastPrismForItem.get(pr.itemId) === idx) {
+        const cage = isSketch ? sketchCages.get(pr.itemId) : null;
+        if (cage && cage.cross) {
+          targetCtx.save();
+          targetCtx.strokeStyle = 'rgba(20, 23, 28, 0.55)';
+          targetCtx.lineWidth = 1.1;
+          targetCtx.beginPath();
+          for (const [ca, cb] of cage.cross) {
+            targetCtx.moveTo(ca.x, ca.y);
+            targetCtx.lineTo(cb.x, cb.y);
+          }
+          targetCtx.stroke();
+          targetCtx.restore();
+        }
+        drawItemLabel3D(itemLabelsMap.get(pr.itemId));
+      }
+    });
+
+    // Pass 4: Foreground Cutaway Curbs
+    cutawayQuads.sort((a, b) => a.depth - b.depth);
+    drawQuadList(cutawayQuads);
 
     // 4. 3D Outlets & Cables overlay
     for (const out of state.room.outlets) {
       const oc = getOutletCoords(out);
       const op = p3(oc.x, oc.y, 35);
-      targetCtx.fillStyle = '#c8a96e';
+      targetCtx.fillStyle = isSketch ? '#9e6b1b' : '#c8a96e';
       targetCtx.fillRect(op.x - 3.5, op.y - 3.5, 7, 7);
       targetCtx.font = '600 9px "JetBrains Mono", Consolas, monospace';
       targetCtx.textAlign = 'center';
+      targetCtx.fillStyle = isSketch ? '#14161a' : '#c8a96e';
       targetCtx.fillText(out.name || out.id, op.x, op.y - 8);
     }
 
@@ -1997,7 +2974,9 @@
       if (!stats) continue;
       const pA = p3(stats.a.x, stats.a.y, 18);
       const pB = p3(stats.b.x, stats.b.y, 18);
-      const col = stats.status === 'ok' ? '#6e9887' : stats.status === 'warn' ? '#c8a96e' : '#d96b6b';
+      const col = isSketch
+        ? (stats.status === 'ok' ? '#257a55' : stats.status === 'warn' ? '#a66f14' : '#b83232')
+        : (stats.status === 'ok' ? '#6e9887' : stats.status === 'warn' ? '#c8a96e' : '#d96b6b');
       targetCtx.beginPath();
       targetCtx.moveTo(pA.x, pA.y);
       if (cable.routingMode === 'wall') {
@@ -2014,7 +2993,7 @@
 
     // 5. Selected Divider 3D Draggable Hinge Nodes (matches 2D fold-node articulation)
     const selItem3D = state.items.find(it => it.id === state.selectedId);
-    if (selItem3D && selItem3D.visible && selItem3D.type === 'divider') {
+    if (isInteractive && selItem3D && selItem3D.visible && selItem3D.type === 'divider') {
       const geom = getDividerGeometry(selItem3D);
       const zH = Math.max(1, Number(selItem3D.zHeight) || 180);
       geom.nodes.forEach((pt, idx) => {
@@ -2077,29 +3056,81 @@
     targetCtx.restore();
   }
 
+  let rafDrawPending = false;
+  function requestDraw() {
+    if (!rafDrawPending) {
+      rafDrawPending = true;
+      requestAnimationFrame(() => {
+        rafDrawPending = false;
+        draw();
+      });
+    }
+  }
+
   function draw() {
     positionHUD();
     const rect = viewport.getBoundingClientRect();
     updateTransform(rect.width, rect.height);
     ctx.clearRect(0, 0, rect.width, rect.height);
-    drawSceneToContext(ctx, rect.width, rect.height, view, 'dark');
+    drawSceneToContext(ctx, rect.width, rect.height, view, state.style3d === 'sketch' ? 'sketch' : 'dark');
   }
 
-  function drawFurnitureItem(targetCtx, item, mapScreen, s, isSel, isBad, isLight) {
+  function drawFurnitureItem(targetCtx, item, mapScreen, s, isSel, isBad, styleMode) {
+    const isSketch = styleMode === 'sketch';
+    const isBlueprint = styleMode === 'blueprint' || styleMode === true;
+    const isLight = isSketch || isBlueprint;
     const pal = getPaletteColor(item.color);
+    const sketchRgb = RGB_3D_PALETTE[item.color] || RGB_3D_PALETTE.zinc;
+    const sketchInk = isBad ? '#b02424' : isSel ? '#9c5e0e' : '#14161a';
 
     if (item.type === 'divider') {
       const geom = getDividerGeometry(item);
+      if (!isLight) {
+        targetCtx.save();
+        targetCtx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+        targetCtx.shadowBlur = Math.max(3, Math.min(10, 5 * s));
+        targetCtx.shadowOffsetX = 0;
+        targetCtx.shadowOffsetY = Math.max(1, 2 * s);
+        targetCtx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+        for (const seg of geom.segments) {
+          const pts = seg.poly.map(pt => mapScreen(pt.x, pt.y));
+          targetCtx.beginPath();
+          targetCtx.moveTo(pts[0].x, pts[0].y);
+          targetCtx.lineTo(pts[1].x, pts[1].y);
+          targetCtx.lineTo(pts[2].x, pts[2].y);
+          targetCtx.lineTo(pts[3].x, pts[3].y);
+          targetCtx.closePath();
+          targetCtx.fill();
+        }
+        targetCtx.restore();
+      } else if (isSketch) {
+        targetCtx.save();
+        targetCtx.fillStyle = 'rgba(38, 34, 28, 0.08)';
+        for (const seg of geom.segments) {
+          const pts = seg.poly.map(pt => mapScreen(pt.x, pt.y));
+          targetCtx.beginPath();
+          targetCtx.moveTo(pts[0].x + 2, pts[0].y + 2);
+          targetCtx.lineTo(pts[1].x + 2, pts[1].y + 2);
+          targetCtx.lineTo(pts[2].x + 2, pts[2].y + 2);
+          targetCtx.lineTo(pts[3].x + 2, pts[3].y + 2);
+          targetCtx.closePath();
+          targetCtx.fill();
+        }
+        targetCtx.restore();
+      }
+
       targetCtx.save();
-      targetCtx.fillStyle = isBad
+      targetCtx.fillStyle = isSketch
+        ? shadeArchitecturalSketch(sketchRgb, { x: 0, y: 0, z: 1 }, 1, isBad, isSel, false)
+        : isBad
         ? 'rgba(217, 107, 107, 0.24)'
         : isSel
-        ? 'rgba(200, 169, 110, 0.18)'
+        ? 'rgba(217, 155, 38, 0.18)'
         : isLight
         ? 'rgba(15, 23, 42, 0.08)'
         : pal.fill;
-      targetCtx.strokeStyle = isBad ? '#d96b6b' : isSel ? '#edeae4' : isLight ? '#334155' : pal.stroke;
-      targetCtx.lineWidth = isSel || isBad ? 1.8 : 1.3;
+      targetCtx.strokeStyle = isSketch ? sketchInk : (isBad ? '#d96b6b' : isSel ? '#EAE7DF' : isLight ? '#334155' : pal.stroke);
+      targetCtx.lineWidth = isSketch ? (isSel || isBad ? 2.0 : 1.5) : (isSel || isBad ? 1.8 : 1.3);
 
       for (const seg of geom.segments) {
         const pts = seg.poly.map(pt => mapScreen(pt.x, pt.y));
@@ -2118,7 +3149,7 @@
         const jp = mapScreen(geom.nodes[i].x, geom.nodes[i].y);
         targetCtx.beginPath();
         targetCtx.arc(jp.x, jp.y, 3, 0, Math.PI * 2);
-        targetCtx.fillStyle = isBad ? '#d96b6b' : isSel ? '#c8a96e' : (isLight ? '#334155' : '#9a9891');
+        targetCtx.fillStyle = isSketch ? sketchInk : (isBad ? '#d96b6b' : isSel ? '#d99b26' : (isLight ? '#334155' : '#9a9891'));
         targetCtx.fill();
       }
 
@@ -2126,10 +3157,16 @@
       targetCtx.textAlign = 'center';
       targetCtx.textBaseline = 'middle';
       targetCtx.font = '600 10px -apple-system, BlinkMacSystemFont, sans-serif';
-      targetCtx.fillStyle = isBad ? '#f7d4d4' : isLight ? '#0f172a' : (isSel ? '#edeae4' : pal.text);
+      if (isSketch) {
+        targetCtx.lineJoin = 'round';
+        targetCtx.lineWidth = 3.2;
+        targetCtx.strokeStyle = 'rgba(244, 241, 234, 0.92)';
+        targetCtx.strokeText(item.name, center.x, isSel ? center.y + 22 : center.y - 16);
+      }
+      targetCtx.fillStyle = isSketch ? (isBad ? '#991b1b' : isSel ? '#78350f' : '#14161a') : (isBad ? '#f7d4d4' : isLight ? '#0f172a' : (isSel ? '#EAE7DF' : pal.text));
       targetCtx.fillText(item.name, center.x, isSel ? center.y + 22 : center.y - 16);
       targetCtx.font = '500 8.5px "JetBrains Mono", Consolas, monospace';
-      targetCtx.fillStyle = isBad ? '#d96b6b' : isLight ? '#475569' : '#9a9891';
+      targetCtx.fillStyle = isSketch ? (isBad ? '#b91c1c' : '#475569') : (isBad ? '#d96b6b' : isLight ? '#475569' : '#9a9891');
       targetCtx.fillText(`${Math.round(item.w)}×${Math.round(item.h)}×${Math.round(item.zHeight || 180)}`, center.x, isSel ? center.y + 34 : center.y + 14);
       targetCtx.restore();
       return;
@@ -2139,18 +3176,56 @@
     const wPx = item.w * s;
     const hPx = item.h * s;
 
+    // 2D Ambient Occlusion Contact Drop Shadow (Grounded furniture)
+    if (isSketch && item.type !== 'rug') {
+      targetCtx.save();
+      targetCtx.translate(center.x + 2.5, center.y + 2.5);
+      targetCtx.rotate(degToRad(item.rot || 0));
+      targetCtx.fillStyle = 'rgba(38, 34, 28, 0.08)';
+      if (item.type === 'plant' || item.type === 'lamp') {
+        targetCtx.beginPath();
+        targetCtx.ellipse(0, 0, wPx / 2, hPx / 2, 0, 0, Math.PI * 2);
+        targetCtx.fill();
+      } else {
+        targetCtx.fillRect(-wPx / 2, -hPx / 2, wPx, hPx);
+      }
+      targetCtx.restore();
+    } else if (!isLight && item.type !== 'rug') {
+      targetCtx.save();
+      targetCtx.translate(center.x, center.y);
+      targetCtx.rotate(degToRad(item.rot || 0));
+      targetCtx.shadowColor = 'rgba(0, 0, 0, 0.40)';
+      targetCtx.shadowBlur = Math.max(4, Math.min(14, 7 * s));
+      targetCtx.shadowOffsetX = 0;
+      targetCtx.shadowOffsetY = Math.max(1, 2.5 * s);
+      targetCtx.fillStyle = 'rgba(0, 0, 0, 0.40)';
+      if (item.type === 'plant' || item.type === 'lamp') {
+        targetCtx.beginPath();
+        targetCtx.ellipse(0, 0, wPx / 2, hPx / 2, 0, 0, Math.PI * 2);
+        targetCtx.fill();
+      } else {
+        targetCtx.fillRect(-wPx / 2, -hPx / 2, wPx, hPx);
+      }
+      targetCtx.restore();
+    }
+
     targetCtx.save();
     targetCtx.translate(center.x, center.y);
     targetCtx.rotate(degToRad(item.rot || 0));
 
     if (item.ignoreCollision) targetCtx.setLineDash([4, 3]);
 
-    if (isBad) {
+    if (isSketch) {
+      targetCtx.fillStyle = item.type === 'rug'
+        ? shadeArchitecturalSketch(sketchRgb, { x: 0, y: 0, z: 1 }, 0.72, isBad, isSel, false)
+        : shadeArchitecturalSketch(sketchRgb, { x: 0, y: 0, z: 1 }, 1, isBad, isSel, false);
+      targetCtx.strokeStyle = sketchInk;
+    } else if (isBad) {
       targetCtx.fillStyle = 'rgba(217, 107, 107, 0.24)';
       targetCtx.strokeStyle = '#d96b6b';
     } else if (isSel) {
-      targetCtx.fillStyle = 'rgba(200, 169, 110, 0.16)';
-      targetCtx.strokeStyle = '#edeae4';
+      targetCtx.fillStyle = 'rgba(217, 155, 38, 0.16)';
+      targetCtx.strokeStyle = '#EAE7DF';
     } else if (isLight) {
       targetCtx.fillStyle = 'rgba(15, 23, 42, 0.06)';
       targetCtx.strokeStyle = '#334155';
@@ -2159,32 +3234,67 @@
       targetCtx.strokeStyle = pal.stroke;
     }
 
-    targetCtx.lineWidth = isSel || isBad ? 1.8 : 1.2;
+    // Tier 3: Movable furniture silhouette line weight (1.3px, 1.8px when selected/colliding)
+    targetCtx.lineWidth = isSketch ? (isSel || isBad ? 2.0 : 1.45) : (isSel || isBad ? 1.8 : 1.3);
     if (item.type === 'plant' || item.type === 'lamp') {
       targetCtx.beginPath();
       targetCtx.ellipse(0, 0, wPx / 2, hPx / 2, 0, 0, Math.PI * 2);
       targetCtx.fill();
       targetCtx.stroke();
+      if (isSketch && wPx >= 20 && hPx >= 20) {
+        targetCtx.strokeStyle = 'rgba(20, 24, 30, 0.28)';
+        targetCtx.lineWidth = 0.7;
+        targetCtx.beginPath();
+        targetCtx.moveTo(-wPx * 0.16, 0); targetCtx.lineTo(wPx * 0.16, 0);
+        targetCtx.moveTo(0, -hPx * 0.16); targetCtx.lineTo(0, hPx * 0.16);
+        targetCtx.stroke();
+      }
     } else {
       targetCtx.fillRect(-wPx / 2, -hPx / 2, wPx, hPx);
       targetCtx.strokeRect(-wPx / 2, -hPx / 2, wPx, hPx);
+      // Scale-invariant architectural drafting corner overshoots on solid boxes
+      if (isSketch && item.type !== 'rug' && wPx >= 24 && hPx >= 20) {
+        const ext = Math.min(5.5, Math.min(wPx, hPx) * 0.14);
+        const hw2 = wPx / 2;
+        const hh2 = hPx / 2;
+        targetCtx.setLineDash([]);
+        targetCtx.strokeStyle = isBad ? 'rgba(176, 36, 36, 0.25)' : isSel ? 'rgba(156, 94, 14, 0.26)' : 'rgba(20, 24, 30, 0.22)';
+        targetCtx.lineWidth = 0.65;
+        targetCtx.beginPath();
+        targetCtx.moveTo(-hw2 - ext, -hh2); targetCtx.lineTo(-hw2, -hh2);
+        targetCtx.moveTo(-hw2, -hh2 - ext); targetCtx.lineTo(-hw2, -hh2);
+        targetCtx.moveTo(hw2, -hh2); targetCtx.lineTo(hw2 + ext, -hh2);
+        targetCtx.moveTo(hw2, -hh2 - ext); targetCtx.lineTo(hw2, -hh2);
+        targetCtx.moveTo(-hw2 - ext, hh2); targetCtx.lineTo(-hw2, hh2);
+        targetCtx.moveTo(-hw2, hh2); targetCtx.lineTo(-hw2, hh2 + ext);
+        targetCtx.moveTo(hw2, hh2); targetCtx.lineTo(hw2 + ext, hh2);
+        targetCtx.moveTo(hw2, hh2); targetCtx.lineTo(hw2, hh2 + ext);
+        targetCtx.stroke();
+      }
     }
     targetCtx.setLineDash([]);
 
-    // CAD Archetype Architectural Details
-    targetCtx.strokeStyle = isBad ? '#fb7185' : isLight ? '#475569' : (isSel ? '#e4e4e7' : pal.stroke);
-    targetCtx.lineWidth = 1;
+    // CAD Archetype Architectural Details (Tier 4: Fine Line 0.85px)
+    targetCtx.strokeStyle = isSketch ? (isBad ? '#b02424' : 'rgba(24, 28, 34, 0.65)') : (isBad ? '#fb7185' : isLight ? '#475569' : (isSel ? '#e4e4e7' : pal.stroke));
+    targetCtx.lineWidth = 0.85;
 
     switch (item.type) {
       case 'bed': {
         const hb = Math.max(5, 10 * s);
-        targetCtx.fillStyle = isBad ? 'rgba(244,63,94,0.3)' : (isLight ? '#cbd5e1' : '#3f3f46');
+        targetCtx.fillStyle = isSketch ? (isBad ? 'rgba(176, 36, 36, 0.16)' : '#ddd6c7') : (isBad ? 'rgba(244,63,94,0.3)' : (isLight ? '#cbd5e1' : '#3f3f46'));
         targetCtx.fillRect(-wPx / 2, -hPx / 2, hb, hPx);
         targetCtx.strokeRect(-wPx / 2, -hPx / 2, hb, hPx);
         const pw = Math.max(8, 28 * s);
         const ph = hPx * 0.36;
         targetCtx.strokeRect(-wPx / 2 + hb + 4, -hPx * 0.42, pw, ph);
         targetCtx.strokeRect(-wPx / 2 + hb + 4, hPx * 0.06, pw, ph);
+        if (isSketch && wPx >= 70) {
+          // Subtle architectural blanket fold line across bed
+          targetCtx.beginPath();
+          targetCtx.moveTo(-wPx * 0.06, -hPx / 2 + 2);
+          targetCtx.lineTo(-wPx * 0.06, hPx / 2 - 2);
+          targetCtx.stroke();
+        }
         break;
       }
       case 'tv': {
@@ -2270,7 +3380,7 @@
         break;
       }
       case 'mirror': {
-        targetCtx.strokeStyle = '#9bb8d3';
+        targetCtx.strokeStyle = isSketch ? '#2f5d84' : '#9bb8d3';
         targetCtx.lineWidth = 2;
         targetCtx.beginPath();
         targetCtx.moveTo(-wPx * 0.42, hPx * 0.3);
@@ -2322,10 +3432,12 @@
       const padL = -wPx / 2 + 10;
       const padB = hPx / 2 - 8;
       targetCtx.font = '600 9.5px -apple-system, BlinkMacSystemFont, sans-serif';
-      targetCtx.fillStyle = isBad ? '#fecdd3' : isLight ? 'rgba(15,23,42,0.72)' : (isSel ? '#ffffff' : 'rgba(237,234,228,0.78)');
+      targetCtx.fillStyle = isSketch
+        ? (isBad ? '#991b1b' : isSel ? '#78350f' : 'rgba(20, 23, 28, 0.78)')
+        : isBad ? '#fecdd3' : isLight ? 'rgba(15,23,42,0.72)' : (isSel ? '#ffffff' : 'rgba(237,234,228,0.78)');
       targetCtx.fillText(item.name, padL, padB - 10);
       targetCtx.font = '500 8px "JetBrains Mono", Consolas, monospace';
-      targetCtx.fillStyle = isBad ? '#fb7185' : isLight ? '#475569' : '#9a9891';
+      targetCtx.fillStyle = isSketch ? (isBad ? '#b91c1c' : '#475569') : (isBad ? '#fb7185' : isLight ? '#475569' : '#9a9891');
       targetCtx.fillText(dimText, padL, padB);
     } else {
       targetCtx.textAlign = 'center';
@@ -2337,18 +3449,36 @@
       const subY = item.type === 'divider' ? 12 : (isCompact ? 6 : 7);
 
       targetCtx.font = isCompact ? '600 9px -apple-system, BlinkMacSystemFont, sans-serif' : '600 10px -apple-system, BlinkMacSystemFont, sans-serif';
-      targetCtx.fillStyle = isBad ? '#fecdd3' : isLight ? '#0f172a' : (isSel ? '#ffffff' : pal.text);
+      if (isSketch) {
+        targetCtx.lineJoin = 'round';
+        targetCtx.lineWidth = 3.0;
+        targetCtx.strokeStyle = 'rgba(251, 249, 244, 0.88)';
+        targetCtx.strokeText(item.name, 0, labelY);
+      }
+      targetCtx.fillStyle = isSketch
+        ? (isBad ? '#991b1b' : isSel ? '#78350f' : '#14161a')
+        : isBad ? '#fecdd3' : isLight ? '#0f172a' : (isSel ? '#ffffff' : pal.text);
       targetCtx.fillText(item.name, 0, labelY);
 
       targetCtx.font = isCompact ? '500 8px "JetBrains Mono", Consolas, monospace' : '500 8.5px "JetBrains Mono", Consolas, monospace';
-      targetCtx.fillStyle = isBad ? '#fb7185' : isLight ? '#475569' : '#a1a1aa';
+      if (isSketch) {
+        targetCtx.lineWidth = 2.6;
+        targetCtx.strokeStyle = 'rgba(251, 249, 244, 0.85)';
+        targetCtx.strokeText(dimText, 0, subY);
+      }
+      targetCtx.fillStyle = isSketch
+        ? (isBad ? '#b91c1c' : '#475569')
+        : isBad ? '#fb7185' : isLight ? '#475569' : '#a1a1aa';
       targetCtx.fillText(dimText, 0, subY);
     }
 
     targetCtx.restore();
   }
 
-  function drawSelectionHandles(targetCtx, item) {
+  function drawSelectionHandles(targetCtx, item, styleMode = 'dark') {
+    const isSketch = styleMode === 'sketch';
+    const handleRing = isSketch ? '#9c5e0e' : '#c8a96e';
+    const handleBorder = isSketch ? '#14161a' : '#0d0e10';
     if (item.type === 'divider') {
       const box = getAABB(item);
       const tl = toScreen(box.minX, box.minY);
@@ -2359,7 +3489,7 @@
 
       targetCtx.save();
       targetCtx.setLineDash([4, 4]);
-      targetCtx.strokeStyle = 'rgba(200, 169, 110, 0.35)';
+      targetCtx.strokeStyle = isSketch ? 'rgba(156, 94, 14, 0.45)' : 'rgba(200, 169, 110, 0.35)';
       targetCtx.lineWidth = 1;
       targetCtx.strokeRect(tl.x - 4, tl.y - 4, (br.x - tl.x) + 8, (br.y - tl.y) + 8);
       targetCtx.setLineDash([]);
@@ -2367,15 +3497,15 @@
       targetCtx.beginPath();
       targetCtx.moveTo(topMid.x, topMid.y - 4);
       targetCtx.lineTo(rotPt.x, rotPt.y);
-      targetCtx.strokeStyle = '#c8a96e';
+      targetCtx.strokeStyle = handleRing;
       targetCtx.lineWidth = 1.5;
       targetCtx.stroke();
 
       targetCtx.beginPath();
       targetCtx.arc(rotPt.x, rotPt.y, 7, 0, Math.PI * 2);
-      targetCtx.fillStyle = '#c8a96e';
+      targetCtx.fillStyle = handleRing;
       targetCtx.fill();
-      targetCtx.strokeStyle = '#0d0e10';
+      targetCtx.strokeStyle = handleBorder;
       targetCtx.lineWidth = 1.5;
       targetCtx.stroke();
 
@@ -2384,22 +3514,22 @@
         const sp = toScreen(pt.x, pt.y);
         targetCtx.beginPath();
         targetCtx.arc(sp.x, sp.y, 6.5, 0, Math.PI * 2);
-        targetCtx.fillStyle = '#edeae4';
+        targetCtx.fillStyle = '#faf8f3';
         targetCtx.fill();
-        targetCtx.strokeStyle = '#c8a96e';
+        targetCtx.strokeStyle = handleRing;
         targetCtx.lineWidth = 2;
         targetCtx.stroke();
 
         targetCtx.beginPath();
         targetCtx.arc(sp.x, sp.y, 2, 0, Math.PI * 2);
-        targetCtx.fillStyle = '#0d0e10';
+        targetCtx.fillStyle = handleBorder;
         targetCtx.fill();
 
         if (idx >= 1 && idx <= 3) {
           const ang = Math.round(geom.folds[idx - 1]);
           if (Math.abs(ang) >= 2) {
             targetCtx.font = '600 9px "JetBrains Mono", Consolas, monospace';
-            targetCtx.fillStyle = '#c8a96e';
+            targetCtx.fillStyle = handleRing;
             targetCtx.textAlign = 'center';
             targetCtx.fillText(`${ang > 0 ? '+' : ''}${ang}°`, sp.x, sp.y - 12);
           }
@@ -2430,16 +3560,16 @@
     targetCtx.beginPath();
     targetCtx.moveTo(topMid.x, topMid.y);
     targetCtx.lineTo(rotPt.x, rotPt.y);
-    targetCtx.strokeStyle = '#c8a96e';
+    targetCtx.strokeStyle = handleRing;
     targetCtx.lineWidth = 1.5;
     targetCtx.stroke();
 
     // Rotation circle
     targetCtx.beginPath();
     targetCtx.arc(rotPt.x, rotPt.y, 7, 0, Math.PI * 2);
-    targetCtx.fillStyle = '#c8a96e';
+    targetCtx.fillStyle = handleRing;
     targetCtx.fill();
-    targetCtx.strokeStyle = '#0d0e10';
+    targetCtx.strokeStyle = handleBorder;
     targetCtx.lineWidth = 1.5;
     targetCtx.stroke();
 
@@ -2448,8 +3578,8 @@
       const handles = getHandleScreenPositions(item).filter(h => h.id !== 'rot');
       for (const h of handles) {
         const size = h.id.length === 2 ? 7 : 8;
-        targetCtx.fillStyle = '#edeae4';
-        targetCtx.strokeStyle = '#0d0e10';
+        targetCtx.fillStyle = isSketch ? '#faf8f3' : '#edeae4';
+        targetCtx.strokeStyle = handleBorder;
         targetCtx.lineWidth = 1.5;
         targetCtx.fillRect(h.x - size / 2, h.y - size / 2, size, size);
         targetCtx.strokeRect(h.x - size / 2, h.y - size / 2, size, size);
@@ -2461,14 +3591,15 @@
       targetCtx.beginPath();
       targetCtx.arc(center.x, center.y, Math.max(40, Math.hypot(hw, hh) + 12), 0, Math.PI * 2);
       targetCtx.setLineDash([3, 4]);
-      targetCtx.strokeStyle = 'rgba(200, 169, 110, 0.55)';
+      targetCtx.strokeStyle = isSketch ? 'rgba(156, 94, 14, 0.55)' : 'rgba(200, 169, 110, 0.55)';
       targetCtx.stroke();
     }
 
     targetCtx.restore();
   }
 
-  function drawClearanceGuides(targetCtx, item, mapScreen) {
+  function drawClearanceGuides(targetCtx, item, mapScreen, styleMode = 'dark') {
+    const isSketch = styleMode === 'sketch';
     const cInfo = computeCenteringInfo(item);
     const { clr, centeredX, centeredY } = cInfo;
     const dirs = [
@@ -2497,6 +3628,13 @@
       return tw;
     };
 
+    const centerStroke = isSketch ? '#059669' : '#10b981';
+    const cBg = isSketch ? '#ecfdf5' : '#064e3b';
+    const cFg = isSketch ? '#065f46' : '#6ee7b7';
+    const nBg = isSketch ? 'rgba(250, 248, 243, 0.94)' : '#0d0e10';
+    const nBorder = isSketch ? 'rgba(20, 24, 30, 0.22)' : null;
+    const nFg = isSketch ? '#1e293b' : '#9a9891';
+
     for (const { key, d } of dirs) {
       if (d.dist < 2) continue;
       const p1 = mapScreen(d.from.x, d.from.y);
@@ -2509,7 +3647,7 @@
       targetCtx.moveTo(p1.x, p1.y);
       targetCtx.lineTo(p2.x, p2.y);
       targetCtx.setLineDash([3, 3]);
-      targetCtx.strokeStyle = isCenteredDir ? '#10b981' : '#71717a';
+      targetCtx.strokeStyle = isCenteredDir ? centerStroke : (isSketch ? 'rgba(24, 28, 36, 0.45)' : '#71717a');
       targetCtx.lineWidth = isCenteredDir ? 1.4 : 1;
       targetCtx.stroke();
       targetCtx.setLineDash([]);
@@ -2518,9 +3656,9 @@
       const my = (p1.y + p2.y) / 2;
       const txt = `${Math.round(d.dist)}cm`;
       if (isCenteredDir) {
-        drawPill(mx, my, txt, '#064e3b', '#10b981', '#6ee7b7');
+        drawPill(mx, my, txt, cBg, centerStroke, cFg);
       } else {
-        drawPill(mx, my, txt, '#0d0e10', null, '#9a9891');
+        drawPill(mx, my, txt, nBg, nBorder, nFg);
       }
     }
 
@@ -2536,7 +3674,7 @@
       targetCtx.moveTo(px, rTop - 10);
       targetCtx.lineTo(px, rBot + 10);
       targetCtx.setLineDash([6, 4]);
-      targetCtx.strokeStyle = '#10b981';
+      targetCtx.strokeStyle = centerStroke;
       targetCtx.lineWidth = 1.5;
       targetCtx.stroke();
       targetCtx.setLineDash([]);
@@ -2545,7 +3683,7 @@
         ? `CENTRO X · ${centeredX.otherName}`
         : `CENTRADO X · ${centeredX.leftCm}↔${centeredX.rightCm}cm`;
       const pillY = cInfo.box.minY < 26 ? rBot - 14 : rTop + 14;
-      drawPill(px, pillY, lbl, '#064e3b', '#10b981', '#6ee7b7');
+      drawPill(px, pillY, lbl, cBg, centerStroke, cFg);
     }
 
     if (centeredY) {
@@ -2554,7 +3692,7 @@
       targetCtx.moveTo(rLeft - 10, py);
       targetCtx.lineTo(rRight + 10, py);
       targetCtx.setLineDash([6, 4]);
-      targetCtx.strokeStyle = '#10b981';
+      targetCtx.strokeStyle = centerStroke;
       targetCtx.lineWidth = 1.5;
       targetCtx.stroke();
       targetCtx.setLineDash([]);
@@ -2564,15 +3702,15 @@
         : `CENTRADO Y · ${centeredY.topCm}↕${centeredY.botCm}cm`;
       const estW = targetCtx.measureText(lbl).width + 8;
       const pillX = cInfo.box.minX < 100 ? rRight - 10 - estW / 2 : rLeft + 10 + estW / 2;
-      drawPill(pillX, py, lbl, '#064e3b', '#10b981', '#6ee7b7');
+      drawPill(pillX, py, lbl, cBg, centerStroke, cFg);
     }
 
     if (centeredX || centeredY) {
       targetCtx.beginPath();
       targetCtx.arc(cPt.x, cPt.y, 4, 0, Math.PI * 2);
-      targetCtx.fillStyle = '#10b981';
+      targetCtx.fillStyle = centerStroke;
       targetCtx.fill();
-      targetCtx.strokeStyle = '#0d0e10';
+      targetCtx.strokeStyle = isSketch ? '#faf8f3' : '#0d0e10';
       targetCtx.lineWidth = 1.5;
       targetCtx.stroke();
     }
@@ -2580,11 +3718,16 @@
     targetCtx.restore();
   }
 
-  function drawCableLine(targetCtx, cable, stats, mapScreen, isLight) {
+  function drawCableLine(targetCtx, cable, stats, mapScreen, styleMode) {
+    const isSketch = styleMode === 'sketch';
+    const isBlueprint = styleMode === 'blueprint' || styleMode === true;
+    const isLight = isSketch || isBlueprint;
     const p1 = mapScreen(stats.a.x, stats.a.y);
     const p2 = mapScreen(stats.b.x, stats.b.y);
-    const isCableMode = state.viewMode === 'cables' && !isLight;
-    const color = stats.status === 'ok' ? (isCableMode ? '#34d399' : '#10b981') : stats.status === 'warn' ? '#f59e0b' : '#fb7185';
+    const isCableMode = state.viewMode === 'cables' && !isBlueprint;
+    const color = isSketch
+      ? (stats.status === 'ok' ? '#15803d' : stats.status === 'warn' ? '#b45309' : '#b91c1c')
+      : (stats.status === 'ok' ? (isCableMode ? '#34d399' : '#10b981') : stats.status === 'warn' ? '#f59e0b' : '#fb7185');
 
     targetCtx.save();
     targetCtx.beginPath();
@@ -2624,7 +3767,7 @@
     targetCtx.font = '600 9.5px "JetBrains Mono", Consolas, monospace';
     const tw = targetCtx.measureText(tag).width + 10;
 
-    targetCtx.fillStyle = isLight ? '#ffffff' : '#0d0e10';
+    targetCtx.fillStyle = isSketch ? '#faf8f3' : isBlueprint ? '#ffffff' : '#0d0e10';
     targetCtx.fillRect(lx - tw / 2, ly - 8, tw, 16);
     targetCtx.strokeStyle = color;
     targetCtx.lineWidth = 1;
@@ -2637,11 +3780,13 @@
     targetCtx.restore();
   }
 
-  function drawMeasureOverlay(targetCtx, mapScreen) {
+  function drawMeasureOverlay(targetCtx, mapScreen, styleMode = 'dark') {
+    const isSketch = styleMode === 'sketch';
+    const lineCol = isSketch ? '#9e6b1b' : '#c8a96e';
     const pts = state.measurePts;
     const p1 = mapScreen(pts[0].x, pts[0].y);
     targetCtx.save();
-    targetCtx.fillStyle = '#c8a96e';
+    targetCtx.fillStyle = lineCol;
     targetCtx.fillRect(p1.x - 3.5, p1.y - 3.5, 7, 7);
 
     if (pts.length === 2) {
@@ -2650,7 +3795,7 @@
       targetCtx.beginPath();
       targetCtx.moveTo(p1.x, p1.y);
       targetCtx.lineTo(p2.x, p2.y);
-      targetCtx.strokeStyle = '#c8a96e';
+      targetCtx.strokeStyle = lineCol;
       targetCtx.lineWidth = 1.8;
       targetCtx.stroke();
 
@@ -2660,10 +3805,12 @@
       const my = (p1.y + p2.y) / 2;
       targetCtx.font = '600 10px "JetBrains Mono", Consolas, monospace';
       const tw = targetCtx.measureText(label).width + 10;
-      targetCtx.fillStyle = '#0d0e10';
+      targetCtx.fillStyle = isSketch ? '#faf8f3' : '#0d0e10';
       targetCtx.fillRect(mx - tw / 2, my - 9, tw, 18);
+      targetCtx.strokeStyle = isSketch ? '#14161a' : lineCol;
+      targetCtx.lineWidth = 1;
       targetCtx.strokeRect(mx - tw / 2, my - 9, tw, 18);
-      targetCtx.fillStyle = '#c8a96e';
+      targetCtx.fillStyle = isSketch ? '#14161a' : lineCol;
       targetCtx.textAlign = 'center';
       targetCtx.textBaseline = 'middle';
       targetCtx.fillText(label, mx, my);
@@ -2755,7 +3902,7 @@
         interaction.pinchStartPan = state.viewMode === '3d'
           ? { x: state.cam3d.panX, y: state.cam3d.panY }
           : { x: state.panX, y: state.panY };
-        interaction.beforeSnapshot = null;
+        // Keep a pending edit until all pointers finish, including a drag-to-pinch transition.
         return;
       }
 
@@ -2898,7 +4045,7 @@
           state.panY = interaction.pinchStartPan.y + (mid.y - interaction.pinchStartMid.y);
           setZoomLabel(state.zoom);
         }
-        draw();
+        requestDraw();
         positionHUD();
         return;
       }
@@ -2912,7 +4059,7 @@
         if (!interaction.emptyClickCandidate) {
           state.cam3d.yaw = interaction.startCam3d.yaw + dxScreen * 0.45;
           state.cam3d.pitch = Math.max(14, Math.min(82, interaction.startCam3d.pitch + dyScreen * 0.35));
-          draw();
+          requestDraw();
         }
         return;
       }
@@ -2920,7 +4067,7 @@
       if (interaction.mode === 'pan3d') {
         state.cam3d.panX = interaction.startPan.x + (sx - interaction.startScreen.sx);
         state.cam3d.panY = interaction.startPan.y + (sy - interaction.startScreen.sy);
-        draw();
+        requestDraw();
         return;
       }
 
@@ -2933,7 +4080,7 @@
         if (!interaction.emptyClickCandidate) {
           state.panX = interaction.startPan.x + dxScreen;
           state.panY = interaction.startPan.y + dyScreen;
-          draw();
+          requestDraw();
           positionHUD();
         }
         return;
@@ -3402,6 +4549,7 @@
   }
 
   function saveCurrentAsLayout(name) {
+    pushUndoSnapshot();
     const placements = {};
     for (const item of state.items) {
       const box = getAABB(item);
@@ -3436,7 +4584,7 @@
 
   function deleteActiveCustomLayout() {
     const layout = state.layouts.find(l => l.id === state.activeLayoutId);
-    if (!layout || layout.builtIn) return;
+    if (!layout || layout.builtIn || state.layouts.length <= 1) return;
     pushUndoSnapshot();
     state.layouts = state.layouts.filter(l => l.id !== layout.id);
     state.activeLayoutId = state.layouts[0].id;
@@ -3606,76 +4754,91 @@
   function applyImportedJson(rawText) {
     const fb = document.getElementById('json-feedback');
     try {
-      const parsed = JSON.parse(rawText);
-      if (!parsed || typeof parsed !== 'object') throw new Error('JSON não é um objeto válido.');
-
-      pushUndoSnapshot();
+      const input = JSON.parse(rawText);
+      const parsed = Array.isArray(input) ? { items: input } : input;
+      window.SimpleCADProjectData.assertCompatible(parsed);
+      const candidate = snapshotProjectData();
+      for (const key of ['items', 'furniture', 'catalog', 'cables', 'layouts']) {
+        if (Object.prototype.hasOwnProperty.call(parsed, key) && !Array.isArray(parsed[key])) {
+          throw new Error('O ficheiro contém uma lista inválida de móveis, cabos ou disposições.');
+        }
+        if (parsed[key]?.some(entry => !entry || typeof entry !== 'object' || Array.isArray(entry))) {
+          throw new Error('O ficheiro contém um móvel, cabo ou disposição inválidos.');
+        }
+      }
 
       // Support both full V2 schema and simple V1 array/items export
-      if (parsed.room && typeof parsed.room.w === 'number' && typeof parsed.room.h === 'number') {
-        state.room = {
+      if (Object.prototype.hasOwnProperty.call(parsed, 'room')) {
+        if (!parsed.room || typeof parsed.room !== 'object' || Array.isArray(parsed.room)) throw new Error('Quarto inválido.');
+        candidate.room = {
           name: String(parsed.room.name || 'Quarto').slice(0, 60),
-          w: Math.max(100, Math.min(2000, Number(parsed.room.w))),
-          h: Math.max(100, Math.min(2000, Number(parsed.room.h))),
-          wallThickness: Number(parsed.room.wallThickness) || 14,
-          doors: Array.isArray(parsed.room.doors) ? parsed.room.doors : state.room.doors,
-          windows: Array.isArray(parsed.room.windows) ? parsed.room.windows : state.room.windows,
-          outlets: Array.isArray(parsed.room.outlets) ? parsed.room.outlets : state.room.outlets
+          w: Number(parsed.room.w),
+          h: Number(parsed.room.h),
+          wallThickness: Number(parsed.room.wallThickness ?? 14),
+          doors: parsed.room.doors === undefined ? candidate.room.doors : parsed.room.doors,
+          windows: parsed.room.windows === undefined ? candidate.room.windows : parsed.room.windows,
+          outlets: parsed.room.outlets === undefined ? candidate.room.outlets : parsed.room.outlets
         };
       }
 
       if (Array.isArray(parsed.cables)) {
-        state.cables = parsed.cables.map(c => ({
+        candidate.cables = parsed.cables.map(c => ({
           id: String(c.id || uid('cable')),
           name: String(c.name || 'Cabo').slice(0, 50),
           fromId: String(c.fromId || ''),
           toId: String(c.toId || ''),
-          maxMeters: Math.max(0.3, Math.min(50, Number(c.maxMeters) || 3.0)),
-          warnMeters: Number(c.warnMeters) || (Number(c.maxMeters) || 3.0) * 0.85,
-          routingMode: c.routingMode === 'wall' ? 'wall' : 'direct',
+          maxMeters: Number(c.maxMeters ?? 3.0),
+          warnMeters: Number(c.warnMeters ?? Number(c.maxMeters ?? 3.0) * 0.85),
+          routingMode: c.routingMode ?? 'direct',
+          ...(c.color === undefined ? {} : { color: c.color }),
           visible: c.visible !== false
         }));
       }
 
-      if (Array.isArray(parsed.layouts) && parsed.layouts.length > 0) {
-        state.layouts = parsed.layouts;
-        state.activeLayoutId = (parsed.activeLayoutId && state.layouts.some(l => l.id === parsed.activeLayoutId))
+      if (Array.isArray(parsed.layouts)) {
+        candidate.layouts = parsed.layouts.length ? parsed.layouts : [{ id: 'imported', name: 'Importado', placements: {} }];
+        candidate.activeLayoutId = (parsed.activeLayoutId && candidate.layouts.some(l => l.id === parsed.activeLayoutId))
           ? parsed.activeLayoutId
-          : state.layouts[0].id;
+          : candidate.layouts[0]?.id;
       }
 
       const rawItems = Array.isArray(parsed.items) ? parsed.items : (Array.isArray(parsed.furniture) ? parsed.furniture : null);
       if (rawItems) {
-        state.items = rawItems.map(it => {
+        candidate.items = rawItems.map(it => {
           const itemType = String(it.type || 'box');
           return {
             id: String(it.id || uid('item')),
             name: String(it.name || it.nome || 'Móvel').slice(0, 60),
             type: itemType,
-            w: Math.max(4, Math.min(600, Number(it.w ?? it.width ?? 60))),
-            h: Math.max(4, Math.min(600, Number(it.h ?? it.depth ?? 45))),
-            zHeight: Math.max(1, Math.min(350, Number(it.zHeight ?? 75))),
+            w: Number(it.w ?? it.width ?? 60),
+            h: Number(it.h ?? it.depth ?? 45),
+            zHeight: Number(it.zHeight ?? 75),
             x: Number(it.cx ?? it.x ?? 60),
             y: Number(it.cy ?? it.y ?? 60),
             rot: Number(it.rot ?? it.rotation ?? 0),
-            foldAngles: itemType === 'divider' ? sanitizeFoldAngles(it.foldAngles) : undefined,
-            color: window.COLOR_PALETTE[it.color] ? it.color : 'zinc',
+            foldAngles: itemType === 'divider' ? (it.foldAngles ?? [0, 0, 0]) : undefined,
+            color: Object.prototype.hasOwnProperty.call(window.COLOR_PALETTE, it.color) ? it.color : 'zinc',
             ignoreCollision: Boolean(it.ignoreCollision),
             lockedDims: Boolean(it.lockedDims),
             visible: it.visible !== false,
             adjustable: Boolean(it.adjustable),
-            photoDataUrl: typeof it.photoDataUrl === 'string' && it.photoDataUrl.startsWith('data:image/') ? it.photoDataUrl : null
+            photoDataUrl: it.photoDataUrl ?? null
           };
         });
       } else if (Array.isArray(parsed.catalog)) {
-        const lay = state.layouts.find(l => l.id === state.activeLayoutId) || state.layouts[0] || { placements: {} };
-        state.items = buildItemsFromLayout(parsed.catalog, lay);
+        const lay = candidate.layouts.find(l => l.id === candidate.activeLayoutId) || candidate.layouts[0] || { placements: {} };
+        candidate.items = buildItemsFromLayout(parsed.catalog, lay);
       }
 
-      if (state.items.length > 0 && !state.items.some(i => i.id === state.selectedId)) {
-        state.selectedId = state.items[0].id;
+      for (const key of ['gridStep', 'wallSnap', 'style3d']) {
+        if (Object.prototype.hasOwnProperty.call(parsed, key)) candidate[key] = parsed[key];
       }
-
+      const selectedId = parsed.selectedId ?? candidate.selectedId;
+      candidate.selectedId = candidate.items.some(item => item.id === selectedId) ? selectedId : (candidate.items[0]?.id ?? null);
+      window.SimpleCADProjectData.validate(candidate);
+      pushUndoSnapshot();
+      applyProjectState(candidate);
+      preserveSavedProject = false;
       saveState();
       syncUI();
       closeDialogSafe('json-dialog');
@@ -3687,7 +4850,7 @@
 
   function exportPNG() {
     const scale = 2; // 2x Retina sharp export
-    const pad = 64;
+    const pad = Math.max(64, (Number(state.room.wallThickness) || 14) + 44);
     const wPx = Math.round((state.room.w + pad * 2) * scale);
     const hPx = Math.round((state.room.h + pad * 2 + 40) * scale);
 
@@ -3698,13 +4861,17 @@
     octx.scale(scale, scale);
 
     const exportView = { scale: 1, ox: pad, oy: pad };
-    drawSceneToContext(octx, wPx / scale, hPx / scale, exportView, 'dark');
+    const exportTheme = state.style3d === 'sketch' ? 'sketch' : 'dark';
+    const sceneHeight = hPx / scale - (state.viewMode === '3d' ? 32 : 0);
+    octx.fillStyle = exportTheme === 'sketch' ? '#f4f1ea' : state.viewMode === '3d' ? '#0d0e10' : '#0a0b0d';
+    octx.fillRect(0, 0, wPx / scale, hPx / scale);
+    drawSceneToContext(octx, wPx / scale, sceneHeight, exportView, exportTheme);
 
     // Architectural stamp footer
-    octx.fillStyle = '#9a9891';
+    octx.fillStyle = exportTheme === 'sketch' ? '#334155' : '#b0aca2';
     octx.font = '600 10px "JetBrains Mono", Consolas, monospace';
     octx.textAlign = 'left';
-    octx.fillText(`SimpleCAD • ${state.room.name || 'Planta'} • ${state.room.w}×${state.room.h} cm`, pad, state.room.h + pad + 44);
+    octx.fillText(`SimpleCAD ARCH • ${state.room.name || 'Planta'} • ${state.room.w}×${state.room.h} cm (${((state.room.w * state.room.h) / 10000).toFixed(2)} m²)`, pad, hPx / scale - 20);
 
     const slug = (state.room.name || 'planta').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     const link = document.createElement('a');
@@ -3777,7 +4944,7 @@
     ).join('');
     laySel.value = state.activeLayoutId;
     const activeLay = state.layouts.find(l => l.id === state.activeLayoutId);
-    document.getElementById('btn-delete-layout').classList.toggle('hidden', !activeLay || activeLay.builtIn);
+    document.getElementById('btn-delete-layout').classList.toggle('hidden', !activeLay || activeLay.builtIn || state.layouts.length <= 1);
 
     // View mode segmented buttons & 3D hint
     const v2d = document.getElementById('btn-view-2d');
@@ -3788,6 +4955,12 @@
     if (v3d) v3d.setAttribute('aria-pressed', state.viewMode === '3d' ? 'true' : 'false');
     const hint3d = document.getElementById('view-3d-hint');
     if (hint3d) hint3d.classList.toggle('hidden', state.viewMode !== '3d');
+    const styleSwitch = document.getElementById('style-3d-switch');
+    if (styleSwitch) styleSwitch.classList.remove('hidden');
+    const bSolid = document.getElementById('btn-style3d-solid');
+    const bSketch = document.getElementById('btn-style3d-sketch');
+    if (bSolid) bSolid.setAttribute('aria-pressed', state.style3d !== 'sketch' ? 'true' : 'false');
+    if (bSketch) bSketch.setAttribute('aria-pressed', state.style3d === 'sketch' ? 'true' : 'false');
 
     const curZoom = state.viewMode === '3d' ? state.cam3d.zoom : state.zoom;
     setZoomLabel(curZoom);
@@ -4284,6 +5457,10 @@
     if (v2d) v2d.addEventListener('click', () => setViewMode('2d'));
     if (vCab) vCab.addEventListener('click', () => setViewMode('cables'));
     if (v3d) v3d.addEventListener('click', () => setViewMode('3d'));
+    const bSolid = document.getElementById('btn-style3d-solid');
+    const bSketch = document.getElementById('btn-style3d-sketch');
+    if (bSolid) bSolid.addEventListener('click', () => { state.style3d = 'solid'; saveState(); syncUI(); });
+    if (bSketch) bSketch.addEventListener('click', () => { state.style3d = 'sketch'; saveState(); syncUI(); });
 
     const topAddBtn = document.getElementById('btn-top-add-item');
     if (topAddBtn) topAddBtn.addEventListener('click', () => openItemDialog(null));
@@ -4496,6 +5673,7 @@
       if (await openConfirmDialog('Repor Projeto Demo', 'Isto vai restaurar o projeto demo Studio Bedroom (440×380 cm), tomadas e os layouts iniciais. Continuar?')) {
         pushUndoSnapshot();
         closeDialogSafe('json-dialog');
+        preserveSavedProject = false;
         applyDefaultProject(false);
         showToast('Projeto demo restaurado!');
       }
@@ -4718,6 +5896,11 @@
       state.selectedId = qp.get('sel') || null;
       if (qp.get('view') === '3d') {
         state.viewMode = '3d';
+      }
+      if (qp.get('style3d') === 'sketch') {
+        state.style3d = 'sketch';
+      } else if (qp.get('style3d') === 'solid') {
+        state.style3d = 'solid';
       }
       const pureZoom = parseFloat(qp.get('zoom'));
       if (Number.isFinite(pureZoom) && pureZoom >= 0.5 && pureZoom <= 3) {

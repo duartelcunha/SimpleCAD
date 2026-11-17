@@ -5,8 +5,9 @@ edition = "2021"
 description = "SimpleCAD — Estúdio CAD 2D & 3D Offline para Plantas de Interiores"
 
 [dependencies]
-tao = "0.37.1"
-wry = "0.57.0"
+# The host is Windows-only. Wry's default features add unused GTK dependencies.
+winit = { version = "0.30.13", default-features = false, features = ["rwh_06"] }
+wry = { version = "0.57.0", default-features = false }
 
 [build-dependencies]
 tauri-winres = "0.3.7"
