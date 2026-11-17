@@ -1,66 +1,60 @@
-<p align="center">
-  <img src="./docs/assets/brand-banner.svg" alt="SimpleCAD: 2D and 3D Architectural Floorplan Studio" width="100%" />
-</p>
+# SimpleCAD
 
-## What it is
+An offline room planner for working out where your furniture fits before you move it. Draw one room to scale, try a few arrangements and keep the one with enough space for the door to open and enough cable to reach the desk.
 
-SimpleCAD is an offline room planner for trying furniture arrangements before moving things around. Edit a rectangular room in 2D, inspect it in 3D, check clearances and cable lengths, and save the arrangement as a project file.
-
-The editor supports rotated furniture, articulated dividers, centimeter snapping, doors, windows, outlets, undo/redo, saved layouts, JSON import/export and PNG export. It runs as a static web page or in a small Windows WebView2 shell.
+[Download for Windows](https://github.com/duartelcunha/SimpleCAD/releases/latest) · [Run in a browser](#try-it) · [Build from source](#technical-details)
 
 <p align="center">
-  <img src="./docs/assets/preview-2d.png" alt="SimpleCAD 2D floorplan" width="100%" />
-  <img src="./docs/assets/preview-3d.png" alt="SimpleCAD 3D view" width="100%" />
+  <a href="docs/assets/studio-plan.png"><img src="docs/assets/studio-plan.png" width="410" alt="Measured plan of a studio bedroom. A 90 cm door swings inward and a 2.33 m cable runs from the desk to the north wall." /></a>
+  <a href="docs/assets/studio-cutaway.png"><img src="docs/assets/studio-cutaway.png" width="410" alt="The same bedroom in 3D, with a folding screen between the oak desk and the bed." /></a>
 </p>
+
+*Studio bedroom, 4.40 × 3.80 m.* The plan shows the door swing and the cable route. Switch to 3D to see how much of the bed the folding screen hides. Open either drawing for a closer look.
 
 ## Try it
 
-For Windows, see the [published releases](https://github.com/duartelcunha/SimpleCAD/releases). Release downloads can lag behind the source branch. The desktop app requires Microsoft Edge WebView2 Runtime.
+**Windows.** The [v1.0.0 release](https://github.com/duartelcunha/SimpleCAD/releases/tag/v1.0.0) offers an installer (`SimpleCAD-Setup.exe`) and a standalone app (`SimpleCAD.exe`). Both use Microsoft Edge WebView2. The screenshots and instructions here follow the current source, which includes changes made after that release.
 
-To try the source, open `index.html` in a browser, or serve the repository locally:
+**Browser.** Download or clone this repository, then open `index.html`. The demo bedroom is ready to edit, and the interface is in Portuguese. If you prefer to serve it locally, run `python -m http.server 4173 --bind 127.0.0.1` in the project folder and open [localhost:4173](http://127.0.0.1:4173).
 
-```powershell
-python -m http.server 4173 --bind 127.0.0.1
-```
+### Try a desk by the window
 
-Open `http://127.0.0.1:4173`. Try entering `Desk 120x60x75` in the quick-add field, switch between 2D and 3D, and use the JSON dialog to save a portable copy. The editor also saves to the browser's local storage; the desktop app uses its own WebView2 profile.
+1. Under **Adicionar Móvel**, enter `Mesa 120x60x75` and press Enter. The desk is 120 cm wide, 60 cm deep and 75 cm tall.
+2. In **2D**, drag the desk under the window. Try a spot by the door as well and check the swing before you settle on a layout.
+3. Switch to **3D** and drag to turn the room. Save the arrangement with **Guardar disposição** before trying another position.
 
-The current editor has one rectangular room, with each side limited to 100–2000 cm on import. Invalid files, unsupported versions and dimensions outside this range are rejected before replacing the open project. Multi-room buildings, editable wall graphs and layers are proposals; the synthetic v3 projects in `projects/` are not supported by the editor.
-
-If browser storage is unavailable or full, the editor displays a persistent warning: export JSON before closing to keep your work. An unreadable saved project is preserved instead of being overwritten by the demo; a valid import or an explicitly confirmed demo reset enables saving again. Preview links with `?pure=1` never change the saved project.
+The editor saves on this device. Export **JSON** to take an editable copy to another computer or **PNG** to share a drawing. If a storage warning appears, export JSON before closing.
 
 ## Technical details
 
-Read [STATUS.md](STATUS.md) for the current handoff and [AGENTS.md](AGENTS.md) for repository guidance. The app uses plain JavaScript, CSS and Canvas; the Windows-only native shell uses Rust, `winit` and `wry`. Wry's optional Unix features are disabled; the lockfile contains no GTK or glib packages. The source is available under the [MIT license](LICENSE).
+The browser editor uses plain JavaScript and Canvas. The Windows app embeds the same files in a Rust host built with Winit, Wry and WebView2. Projects describe a single rectangular room with sides from 1 to 20 m. The v3 buildings and layers in the design notes are proposals.
 
-Build on Windows with Rust's MSVC toolchain. NSIS is needed only for the installer:
+<details>
+<summary><strong>Build the Windows app</strong></summary>
+
+Install the Rust MSVC toolchain. From the repository root, run
 
 ```powershell
 cargo build --manifest-path .\native\Cargo.toml --release --locked
 Copy-Item .\native\target\release\simplecad.exe .\SimpleCAD.exe -Force
-makensis .\native\installer.nsi
 ```
 
-Run the real browser regression suite with an existing Chromium installation:
+To make the installer, run `makensis .\native\installer.nsi` with NSIS available on your path. Rebuild the executable after changing embedded web assets.
+
+</details>
+
+<details>
+<summary><strong>Run the browser tests</strong></summary>
 
 ```powershell
 npm.cmd ci --ignore-scripts
 npm.cmd run test:browser
 ```
 
-By default it uses Playwright's installed Chromium. Set `SIMPLECAD_BROWSER_PATH` to the absolute path of an existing Chromium-based browser if needed. To reuse an existing Playwright installation without installing packages, set `SIMPLECAD_PLAYWRIGHT_MODULE` to its absolute module directory. The suite runs headlessly with isolated profiles and synthetic data. It covers resizing, touch gestures, collisions, imports, persistence and PNG exports through the actual UI.
+The [Playwright suite](tests/browser-engine.cjs) runs the actual editor headlessly. It checks gestures, geometry, undo, project storage and exports. Use Playwright’s installed Chromium or set `SIMPLECAD_BROWSER_PATH` to an installed Chromium-based browser. Set `SIMPLECAD_PLAYWRIGHT_MODULE` to an absolute module directory to reuse an existing Playwright installation.
 
-Syntax and older synthetic checks:
+The [older checks](tests/verify-all.js) and [benchmarks](benchmarks/) use synthetic fixtures and models. Their timings do not measure browser frame rates.
 
-```powershell
-node --check .\app.js
-node --check .\default-room.js
-node --check .\project-data.js
-node .\tests\verify-all.js
-node .\benchmarks\validate-projects.js
-node .\benchmarks\cad-benchmark.js
-```
+</details>
 
-The older `verify-all` and benchmark scripts check source text, documents, synthetic fixtures and separate algorithm prototypes. They do not run the application in a browser. The benchmark uses a simulated canvas, so its throughput figures do not establish browser frame rates or application performance guarantees.
-
-`app.js` contains the editor and renderers, `project-data.js` validates imports and saved projects, `default-room.js` contains the factory scene and furniture definitions, and `native/` contains the Windows host and installer. The architecture and performance documents in `docs/` describe proposed work; their status notes distinguish that work from the current editor.
+[Project status](STATUS.md) · [Contributor notes](AGENTS.md) · [MIT license](LICENSE)

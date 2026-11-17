@@ -2,9 +2,9 @@
 
 **Em uma frase:** planear a disposição dos móveis de um quarto, em 2D e 3D, sem depender de serviços externos.
 
-**Estado:** motor herdado revisto e corrigido; validação concluída no browser e no executável Windows. Merge autorizado pelo Duarte, ainda bloqueado pela sessão de execução.
+**Estado:** motor herdado revisto e corrigido; validação concluída no browser e no executável Windows. A apresentação do projeto inclui duas vistas reais da divisão demo e um percurso para experimentar o editor.
 
-**Última atualização:** 2026-11-16, Codex.
+**Última atualização:** 2026-11-17.
 
 ## Onde está
 - Ramo: `chore/resume-antigravity-cleanup`; [PR #1](https://github.com/duartelcunha/SimpleCAD/pull/1).
@@ -23,8 +23,8 @@
 - Executável final recompilado e usado com WebView2 numa secretária invisível: abertura, redimensionamento, edição, desfazer/refazer, 2D/3D, JSON, PNG, fecho e persistência após reiniciar passaram. Nenhum ecrã ou perfil do utilizador foi usado.
 - Instalador NSIS recompilado a partir desse executável; os ficheiros fonte permaneceram iguais entre a compilação, o teste e o empacotamento.
 
-## Próximo passo
-As correções já foram enviadas. Em 2026-11-16, o Duarte escolheu explicitamente «Incluir o merge» e pediu implementar o plano; essa autorização continua válida para o PR #1, sem release. O PR ainda está em rascunho com a descrição da recuperação: atualizar a apresentação, retirar o rascunho e fundir pelo processo de merge da máquina depois de reiniciar o Codex. A regra antiga já foi removida com autorização, mas a sessão continua a recusar a escrita; a documentação oficial indica que as regras são carregadas no arranque. Não repetir o pedido de autorização nem contornar a restrição ativa. O [alerta glib](https://github.com/duartelcunha/SimpleCAD/security/dependabot/1) continua aberto na main: a dependência foi removida neste ramo, sem ocultar o alerta. Confirmar o estado no GitHub depois do merge.
+## Entrega
+O [PR #1](https://github.com/duartelcunha/SimpleCAD/pull/1) reúne a revisão do motor e a apresentação do editor. O registo do merge está no PR e o estado da dependência no [alerta glib](https://github.com/duartelcunha/SimpleCAD/security/dependabot/1). O instalador publicado é o da versão 1.0.0.
 
 ## Decisões e limites
 - O editor continua a ter uma divisão retangular. Edifícios, pisos, camadas e paredes interiores dos documentos e exemplos v3 são propostas.
