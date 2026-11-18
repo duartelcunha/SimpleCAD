@@ -403,6 +403,66 @@ test('2D and 3D PNGs exclude selection; 2D excludes camera and measurement overl
   assert.equal(await pngHash(page), clean, 'Editor zoom, pan, and measurement overlays must not change the exported drawing.');
 });
 
+test('3D occlusion hides rear nightstand and handles behind the wardrobe', async page => {
+  const measureOcclusion = () => page.evaluate(() => {
+    const canvas = document.getElementById('cadCanvas');
+    const cctx = canvas.getContext('2d');
+    const dpr = canvas.width / canvas.clientWidth;
+    const x0 = Math.floor(canvas.clientWidth * 0.25 * dpr);
+    const y0 = Math.floor(canvas.clientHeight * 0.25 * dpr);
+    const w = Math.floor(canvas.clientWidth * 0.45 * dpr);
+    const h = Math.floor(canvas.clientHeight * 0.53 * dpr);
+    const data = cctx.getImageData(x0, y0, w, h).data;
+    let amber = 0;
+    let handles = 0;
+    let wardrobeGray = 0;
+    let paperLight = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      if (r > 150 && g > 100 && r - b > 60) amber++;
+      if (b > r + 4 && r >= 165 && g >= 168 && b >= 175) handles++;
+      if (Math.abs(r - g) < 16 && Math.abs(g - b) < 16 && r >= 75 && r <= 205) wardrobeGray++;
+      if (r > 220 && g > 215 && b > 205) paperLight++;
+    }
+    return { amber, handles, wardrobeGray, paperLight };
+  });
+
+  // Positive control: exposed amber nightstand and front-facing wardrobe handles (rot: 0) trigger detectors.
+  await load(page, fixture([
+    furniture({ id: 'rear-amber', name: 'Exposed nightstand', type: 'nightstand', color: 'amber', x: 180, y: 260, w: 50, h: 46, zHeight: 55, rot: 270 }),
+    furniture({ id: 'front-wardrobe', name: 'Front wardrobe', type: 'wardrobe', color: 'zinc', x: 300, y: 315, w: 160, h: 64, zHeight: 215, rot: 0 })
+  ]));
+  await page.locator('#btn-view-3d').click();
+  await page.locator('#btn-style3d-solid').click();
+  await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+  const solidControl = await measureOcclusion();
+  assert(solidControl.amber > 1000, 'Exposed amber nightstand control must be detected in Solid 3D.');
+  assert(solidControl.handles >= 15, 'Front-facing wardrobe handles control must be detected in Solid 3D.');
+
+  await page.locator('#btn-style3d-sketch').click();
+  await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+  const sketchControl = await measureOcclusion();
+  assert(sketchControl.amber > 500, 'Exposed amber nightstand control must be detected in Sketch 3D.');
+
+  // Occlusion check: rear nightstand (y: 215) and rear-facing wardrobe handles (rot: 180) must be hidden behind wardrobe.
+  await load(page, fixture([
+    furniture({ id: 'rear-amber', name: 'Rear nightstand', type: 'nightstand', color: 'amber', x: 300, y: 215, w: 50, h: 46, zHeight: 55, rot: 270 }),
+    furniture({ id: 'front-wardrobe', name: 'Front wardrobe', type: 'wardrobe', color: 'zinc', x: 300, y: 315, w: 160, h: 64, zHeight: 215, rot: 180 })
+  ]));
+  await page.locator('#btn-style3d-solid').click();
+  await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+  const solidOccluded = await measureOcclusion();
+  assert(solidOccluded.wardrobeGray > 10000, 'Wardrobe faces must render solidly in 3D.');
+  assert.equal(solidOccluded.amber, 0, 'Rear amber nightstand must be completely occluded behind the front wardrobe.');
+  assert.equal(solidOccluded.handles, 0, 'Rear-facing wardrobe handles must be completely occluded behind the wardrobe body.');
+
+  await page.locator('#btn-style3d-sketch').click();
+  await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+  const sketchOccluded = await measureOcclusion();
+  assert(sketchOccluded.paperLight > 1000, 'Sketch 3D mode must render warm architectural paper tones.');
+  assert.equal(sketchOccluded.amber, 0, 'Sketch 3D must also occlude the rear amber nightstand behind the front wardrobe.');
+});
+
 async function main() {
   const browserPath = process.env.SIMPLECAD_BROWSER_PATH;
   if (browserPath && !path.isAbsolute(browserPath)) throw new Error('SIMPLECAD_BROWSER_PATH must be absolute.');

@@ -1,33 +1,25 @@
 # Estado do projeto
 
-**Em uma frase:** planear a disposição dos móveis de um quarto, em 2D e 3D, sem depender de serviços externos.
+**Em uma frase:** planear a disposição dos móveis de um quarto retangular, em 2D e 3D (modos `Solid` e `Sketch`), 100% offline.
 
-**Estado:** motor herdado revisto e corrigido; validação concluída no browser e no executável Windows. A apresentação do projeto inclui duas vistas reais da divisão demo e um percurso para experimentar o editor.
+**Estado:** ramo `main` limpo e consolidado após o merge do PR #1, com a marca final aplicada, o erro de ordenação/oclusão 3D resolvido, ativos obsoletos removidos, vistas do README regeneradas, auditoria independente e suite de browser verificada (21 casos).
 
-**Última atualização:** 2026-11-17.
+**Última atualização:** 2026-11-18.
 
 ## Onde está
-- Ramo: `chore/resume-antigravity-cleanup`; [PR #1](https://github.com/duartelcunha/SimpleCAD/pull/1).
-- A recuperação anterior preservou o trabalho herdado e repôs a marca escolhida a partir dos originais, com ícones Windows correspondentes.
-- Pedido atual: rever o motor e corrigir os problemas encontrados, incluindo o alerta do glib.
+- Ramo ativo e publicado: `main`. O ramo `chore/resume-antigravity-cleanup` (que deu origem ao [PR #1](https://github.com/duartelcunha/SimpleCAD/pull/1)) teve o seu diff verificado como totalmente integrado em `main` e foi removido localmente e do remoto.
+- Identidade visual unificada: ícone de planos espaciais + logótipo vetorial (`icon.svg`, `icon.ico`, `native/icon_64.rgba`, cabeçalho em `index.html` e banner `docs/assets/brand-banner.svg`).
 
 ## Corrigido e verificado
-- Importar um ficheiro inválido já não altera parcialmente o projeto nem o histórico. Valores numéricos com HTML são recusados antes de chegarem à interface. Opções e cores dos cabos sobrevivem à exportação e reimportação.
-- Ficheiros v3, estruturas não suportadas e dimensões fora dos limites são recusados; não são convertidos com perda silenciosa de informação.
-- Um arrasto seguido de pinça conserva a gravação e o desfazer. Redimensionar um lado preserva a outra dimensão; Shift conserva as proporções.
-- Interromper uma animação conserva o destino da operação e o histórico. A última disposição não pode ser apagada; projetos antigos com disposições vazias são recuperados.
-- Exportar PNG já não altera a seleção 3D nem inclui os controlos de edição. Sombras e rodapé corrigidos.
-- A pré-visualização não substitui o projeto guardado. Dados guardados ilegíveis são preservados; falhas de gravação têm aviso persistente para exportar JSON.
-- Suite permanente de browser: 20 casos passaram com a aplicação real, perfis isolados e dados fictícios. Sintaxe JavaScript e suite sintética anterior passaram. Revisão independente concluída; os problemas encontrados nessa revisão foram corrigidos e voltaram a ser testados.
-- Tao substituído por Winit; funcionalidades Unix desnecessárias do Wry desativadas. O lock já não contém glib/GTK. Compilação Rust release, Clippy e formatação passaram.
-- Executável final recompilado e usado com WebView2 numa secretária invisível: abertura, redimensionamento, edição, desfazer/refazer, 2D/3D, JSON, PNG, fecho e persistência após reiniciar passaram. Nenhum ecrã ou perfil do utilizador foi usado.
-- Instalador NSIS recompilado a partir desse executável; os ficheiros fonte permaneceram iguais entre a compilação, o teste e o empacotamento.
-
-## Entrega
-O [PR #1](https://github.com/duartelcunha/SimpleCAD/pull/1) reúne a revisão do motor e a apresentação do editor. O registo do merge está no PR e o estado da dependência no [alerta glib](https://github.com/duartelcunha/SimpleCAD/security/dependabot/1). O instalador publicado é o da versão 1.0.0.
+- **Oclusão e ordenação 3D (`app.js`)**: `addBox3D` guarda os limites projetados no ecrã (`sMinX..sMaxY`) e `comparePrisms3D` ignora pares disjuntos no ecrã e exige consenso entre todos os eixos separadores antes de impor ordem topológica, eliminando ciclos que faziam a mesinha traseira e os puxadores traseiros atravessarem o roupeiro na vista 3D.
+- **Limpeza do repositório**: removidos os ficheiros mortos `docs/assets/preview-2d.png` e `docs/assets/preview-3d.png`, corrigido o comentário desatualizado `(360×420 cm)` em `default-room.js`, uniformizados os parâmetros `?v=35` em `index.html` e restaurado `docs/assets/brand-banner.svg` em `README.md` com capturas atualizadas (`docs/assets/studio-plan.png` e `docs/assets/studio-cutaway.png`).
+- **Motor e importação (PR #1)**: validação estrita antes de alterar o estado em `project-data.js`, preservação de dados guardados ilegíveis e avisos persistentes de quota, cancelamento seguro de animações com desfazer/refazer e exclusão de controlos/seleção na exportação PNG.
+- **Suite real no browser (`tests/browser-engine.cjs`)**: 21 casos verificados (incluindo regressão com controlos positivo/oculto para mesinha traseira e puxadores do roupeiro nos modos 3D `Solid` e `Sketch`), somando validação de sintaxe JS e a suite sintética anterior (`tests/verify-all.js`, 93 asserções).
+- **Verificação visual no browser (desktop + responsivo)**: validados em HTTP local `2D Solid`, `2D Sketch`, `Cabos`, `3D Solid` (padrão + órbita traseira), `3D Sketch` (padrão + órbita), `docs/assets/brand-banner.svg`, tablet (`768×1024`) e mobile (`390×844` com abertura/fecho de `#btn-mobile-sheet`), com 0 erros de consola/rede.
+- **Host nativo Windows (`native/`)**: usa `winit` + `wry` sem `glib`/GTK; verificações Rust (`cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`) e compilação release de `SimpleCAD.exe` executadas sobre os ativos web finais.
 
 ## Decisões e limites
-- O editor continua a ter uma divisão retangular. Edifícios, pisos, camadas e paredes interiores dos documentos e exemplos v3 são propostas.
-- Os testes antigos e os benchmarks são sintéticos; não medem o desempenho da aplicação no browser.
-- A verificação nativa decorreu numa secretária invisível; não foi comparada visualmente com a secretária normal. O instalador não foi executado e nenhuma release foi publicada.
-- Os binários locais são ignorados pelo Git; não se apagaram projetos, propostas nem histórico.
+- O editor modela apenas uma divisão retangular (`100–2000 cm` na validação; os campos numéricos da barra lateral limitam atualmente a entrada direta até `1500 cm`). Os ficheiros v3 em `docs/` e `projects/` continuam a ser propostas não implementadas.
+- Os testes antigos (`tests/verify-all.js`) e os ficheiros em `benchmarks/` usam fixtures sintéticas e não medem FPS reais do browser.
+- Em viewports estreitos pré-existentes (`768×1024` e `390×844`), a barra de ferramentas superior e a barra flutuante de seleção recorrem a scroll horizontal (podendo encobrir o botão mais à direita até deslizar) e o bloco de escala Sketch em `768×1024` aproxima-se do badge inferior esquerdo de coordenadas.
+- `makensis.exe` (NSIS) não está instalado neste ambiente, pelo que o instalador `SimpleCAD-Setup.exe` não foi recompilado nesta ronda (binários locais `.exe` são ignorados pelo `.gitignore`; a release publicada no GitHub permanece na `v1.0.0`).

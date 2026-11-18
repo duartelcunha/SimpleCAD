@@ -1,5 +1,5 @@
 /**
- * SimpleCAD — Projeto Demonstrativo Padrão (360×420 cm),
+ * SimpleCAD — Projeto Demonstrativo Padrão (440×380 cm),
  * Arquétipos CAD, Paleta de Cores & Parser Local Offline (Zero APIs / Zero Custo).
  */
 

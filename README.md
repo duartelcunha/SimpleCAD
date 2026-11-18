@@ -1,6 +1,8 @@
-# SimpleCAD
+<p align="center">
+  <img src="docs/assets/brand-banner.svg" alt="SimpleCAD — 2D &amp; 3D Architectural Floorplan Studio" width="100%" />
+</p>
 
-An offline room planner for working out where your furniture fits before you move it. Draw one room to scale, try a few arrangements and keep the one with enough space for the door to open and enough cable to reach the desk.
+An offline room planner for working out where your furniture fits before you move it. Draw one rectangular room to scale, compare layouts, and check door swing clearance, cable reach, and architectural **Solid** or **Sketch** views in 2D and 3D.
 
 [Download for Windows](https://github.com/duartelcunha/SimpleCAD/releases/latest) · [Run in a browser](#try-it) · [Build from source](#technical-details)
 
@@ -9,19 +11,25 @@ An offline room planner for working out where your furniture fits before you mov
   <a href="docs/assets/studio-cutaway.png"><img src="docs/assets/studio-cutaway.png" width="410" alt="The same bedroom in 3D, with a folding screen between the oak desk and the bed." /></a>
 </p>
 
-*Studio bedroom, 4.40 × 3.80 m.* The plan shows the door swing and the cable route. Switch to 3D to see how much of the bed the folding screen hides. Open either drawing for a closer look.
+*Studio bedroom, 4.40 × 3.80 m.* The plan shows the door swing and the cable route. Switch between **2D**, **Cabos**, and **3D**—and toggle **Solid** or **Sketch** styling—to inspect layout spacing and sightlines before moving furniture.
 
 ## Try it
 
-**Windows.** The [v1.0.0 release](https://github.com/duartelcunha/SimpleCAD/releases/tag/v1.0.0) offers an installer (`SimpleCAD-Setup.exe`) and a standalone app (`SimpleCAD.exe`). Both use Microsoft Edge WebView2. The screenshots and instructions here follow the current source, which includes changes made after that release.
+**Windows.** The [v1.0.0 release](https://github.com/duartelcunha/SimpleCAD/releases/tag/v1.0.0) provides an installer (`SimpleCAD-Setup.exe`) and a standalone executable (`SimpleCAD.exe`). Both use Microsoft Edge WebView2 and embed the offline web assets at build time. The screenshots and notes here follow the current `main` source, which includes fixes and visual updates made after `v1.0.0`.
 
-**Browser.** Download or clone this repository, then open `index.html`. The demo bedroom is ready to edit, and the interface is in Portuguese. If you prefer to serve it locally, run `python -m http.server 4173 --bind 127.0.0.1` in the project folder and open [localhost:4173](http://127.0.0.1:4173).
+**Browser.** Download or clone this repository, then open `index.html`. The demo bedroom loads ready to edit, and the UI is in Portuguese. To serve it locally:
+
+```powershell
+python -m http.server 4173 --bind 127.0.0.1
+```
+
+Then open [localhost:4173](http://127.0.0.1:4173).
 
 ### Try a desk by the window
 
-1. Under **Adicionar Móvel**, enter `Mesa 120x60x75` and press Enter. The desk is 120 cm wide, 60 cm deep and 75 cm tall.
-2. In **2D**, drag the desk under the window. Try a spot by the door as well and check the swing before you settle on a layout.
-3. Switch to **3D** and drag to turn the room. Save the arrangement with **Guardar disposição** before trying another position.
+1. Under **Adicionar Móvel**, enter `Mesa 120x60x75` and press Enter (120 cm wide, 60 cm deep, 75 cm tall).
+2. In **2D**, drag the desk under the window, test a spot near the door swing, and check wall/furniture collision guides.
+3. Switch to **3D** and drag to orbit the room, toggle **Solid** / **Sketch** style, and save arrangements with **Guardar disposição**.
 
 The editor saves on this device. Export **JSON** to take an editable copy to another computer or **PNG** to share a drawing. If a storage warning appears, export JSON before closing.
 

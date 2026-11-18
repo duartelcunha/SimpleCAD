@@ -2085,6 +2085,21 @@
       }
       cx2 /= n;
       cy2 /= n;
+      const botPts = bot.map(v => p3(v.x, v.y, v.z));
+      const topPts = top.map(v => p3(v.x, v.y, v.z));
+      let sMinX = Infinity, sMaxX = -Infinity, sMinY = Infinity, sMaxY = -Infinity;
+      for (const q of botPts) {
+        if (q.x < sMinX) sMinX = q.x;
+        if (q.x > sMaxX) sMaxX = q.x;
+        if (q.y < sMinY) sMinY = q.y;
+        if (q.y > sMaxY) sMaxY = q.y;
+      }
+      for (const q of topPts) {
+        if (q.x < sMinX) sMinX = q.x;
+        if (q.x > sMaxX) sMaxX = q.x;
+        if (q.y < sMinY) sMinY = q.y;
+        if (q.y > sMaxY) sMaxY = q.y;
+      }
 
       const flags = itemId ? sketchItemFlags.get(itemId) : null;
       const isBad = Boolean(flags && flags.isBad);
@@ -2123,8 +2138,6 @@
 
       let sketchMeta = null;
       if (isSketch) {
-        const botPts = bot.map(v => p3(v.x, v.y, v.z));
-        const topPts = top.map(v => p3(v.x, v.y, v.z));
         const isRound = n >= 6;
         const isMicro = Math.max(maxX - minX, maxY - minY, z1 - z0) < 9 || isDoor;
         const inkRgb = isBad ? '176, 36, 36' : isSel ? '156, 94, 14' : isDoor ? '138, 90, 20' : '20, 23, 28';
@@ -2214,6 +2227,7 @@
       prisms.push({
         poly2d,
         minX, maxX, minY, maxY, minZ: z0, maxZ: z1,
+        sMinX, sMaxX, sMinY, sMaxY,
         depth: centerProj.depth,
         faces: localFaces,
         sketchMeta,
@@ -2223,19 +2237,35 @@
     };
 
     const comparePrisms3D = (a, b) => {
-      const eps = 0.05;
-      if (a.maxZ <= b.minZ + eps) return -1;
-      if (b.maxZ <= a.minZ + eps) return 1;
-
-      if (Math.abs(camDir.x) > 0.001) {
-        if (a.maxX <= b.minX + eps) return camDir.x > 0 ? -1 : 1;
-        if (b.maxX <= a.minX + eps) return camDir.x > 0 ? 1 : -1;
+      const sEps = 0.5;
+      if (a.sMaxX <= b.sMinX + sEps || b.sMaxX <= a.sMinX + sEps ||
+          a.sMaxY <= b.sMinY + sEps || b.sMaxY <= a.sMinY + sEps) {
+        return 0;
       }
 
-      if (Math.abs(camDir.y) > 0.001) {
-        if (a.maxY <= b.minY + eps) return camDir.y > 0 ? -1 : 1;
-        if (b.maxY <= a.minY + eps) return camDir.y > 0 ? 1 : -1;
-      }
+      const eps = 0.02;
+      let aCanOccludeB = true;
+      let bCanOccludeA = true;
+      const checkSep = (minA, maxA, minB, maxB, nx, ny, nz) => {
+        const dot = nx * camDir.x + ny * camDir.y + nz * camDir.z;
+        if (Math.abs(dot) <= 0.001) return;
+        if (maxA <= minB + eps) {
+          if (dot > 0) aCanOccludeB = false;
+          else bCanOccludeA = false;
+        } else if (maxB <= minA + eps) {
+          if (dot > 0) bCanOccludeA = false;
+          else aCanOccludeB = false;
+        }
+      };
+
+      checkSep(a.minZ, a.maxZ, b.minZ, b.maxZ, 0, 0, 1);
+      if (!aCanOccludeB && !bCanOccludeA) return 0;
+
+      checkSep(a.minX, a.maxX, b.minX, b.maxX, 1, 0, 0);
+      if (!aCanOccludeB && !bCanOccludeA) return 0;
+
+      checkSep(a.minY, a.maxY, b.minY, b.maxY, 0, 1, 0);
+      if (!aCanOccludeB && !bCanOccludeA) return 0;
 
       const polys = [a.poly2d, b.poly2d];
       for (let pIdx = 0; pIdx < 2; pIdx++) {
@@ -2261,16 +2291,13 @@
             if (d < minB) minB = d;
             if (d > maxB) maxB = d;
           }
-          if (maxA <= minB + eps) {
-            const dotCam = nx * camDir.x + ny * camDir.y;
-            if (Math.abs(dotCam) > 0.001) return dotCam > 0 ? -1 : 1;
-          }
-          if (maxB <= minA + eps) {
-            const dotCam = (-nx) * camDir.x + (-ny) * camDir.y;
-            if (Math.abs(dotCam) > 0.001) return dotCam > 0 ? 1 : -1;
-          }
+          checkSep(minA, maxA, minB, maxB, nx, ny, 0);
+          if (!aCanOccludeB && !bCanOccludeA) return 0;
         }
       }
+
+      if (!aCanOccludeB && bCanOccludeA) return -1;
+      if (aCanOccludeB && !bCanOccludeA) return 1;
       return 0;
     };
 
