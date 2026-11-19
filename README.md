@@ -4,7 +4,7 @@
 
 An offline room planner for working out where your furniture fits before you move it. Draw one rectangular room to scale, compare layouts, and check door swing clearance, cable reach, and architectural **Solid** or **Sketch** views in 2D and 3D.
 
-[Download for Windows](https://github.com/duartelcunha/SimpleCAD/releases/latest) · [Run in a browser](#try-it) · [Build from source](#technical-details)
+[Download for Windows](https://github.com/duartelcunha/SimpleCAD/releases/latest) · [Open Web App (Phone & PC)](https://duartelcunha.github.io/SimpleCAD/) · [Run locally](#try-it) · [Build from source](#technical-details)
 
 <p align="center">
   <a href="docs/assets/studio-plan.png"><img src="docs/assets/studio-plan.png" width="410" alt="Measured plan of a studio bedroom. A 90 cm door swings inward and a 2.33 m cable runs from the desk to the north wall." /></a>
@@ -15,9 +15,11 @@ An offline room planner for working out where your furniture fits before you mov
 
 ## Try it
 
-**Windows.** The [latest release](https://github.com/duartelcunha/SimpleCAD/releases/latest) ([v1.1.0](https://github.com/duartelcunha/SimpleCAD/releases/tag/v1.1.0)) provides a standalone portable executable (`SimpleCAD.exe`) with no installer required. It uses Microsoft Edge WebView2 and embeds the offline web assets at build time. Because the executable is not signed with a commercial Authenticode certificate, Windows SmartScreen may show a standard unrecognized-app prompt on first launch (*More info* → *Run anyway*).
+**Online Web App (Phone, Tablet & PC).** Open [duartelcunha.github.io/SimpleCAD](https://duartelcunha.github.io/SimpleCAD/) in any browser—no installation or technical setup needed. You can add it to your phone’s Home Screen as an offline PWA, take reference photos of furniture directly with your phone camera, and share or carry your floorplan anywhere via a single QR Code (`#p=...` compressed URL).
 
-**Browser.** Download or clone this repository, then open `index.html`. The demo bedroom loads ready to edit, and the UI is in Portuguese. To serve it locally:
+**Windows (`SimpleCAD.exe` + Live Phone Sync).** The [latest release](https://github.com/duartelcunha/SimpleCAD/releases/latest) ([v1.2.0](https://github.com/duartelcunha/SimpleCAD/releases/tag/v1.2.0)) provides a standalone portable executable (`SimpleCAD.exe`) with no installer required. It uses Microsoft Edge WebView2, embeds all offline web assets at build time, and includes a zero-config **Use on Phone (QR Code)** button in the top toolbar: scan the QR Code with your phone on the same Wi-Fi to edit the room and photograph furniture on your phone with live two-way sync to your PC (or switch to the **4G/5G** tab in the QR dialog to take the room layout anywhere). Because the executable is not signed with a commercial Authenticode certificate, Windows SmartScreen may show a standard unrecognized-app prompt on first launch (*More info* → *Run anyway*).
+
+**Local Browser.** Download or clone this repository, then open `index.html`. The demo bedroom loads ready to edit, and the UI is in Portuguese. To serve it locally:
 
 ```powershell
 python -m http.server 4173 --bind 127.0.0.1

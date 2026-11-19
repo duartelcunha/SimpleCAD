@@ -13,8 +13,8 @@ const { chromium } = require(modulePath || 'playwright');
 const ROOT = path.resolve(__dirname, '..');
 const ORIGIN = 'http://simplecad.test';
 const STORAGE_KEY = 'simplecad_project_v5';
-const files = new Set(['index.html', 'styles.css', 'app.js', 'project-data.js', 'default-room.js', 'icon.svg', 'icon.ico']);
-const contentTypes = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
+const files = new Set(['index.html', 'styles.css', 'app.js', 'project-data.js', 'default-room.js', 'icon.svg', 'icon.ico', 'manifest.webmanifest', 'sw.js']);
+const contentTypes = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' };
 
 function furniture(overrides = {}) {
   return { id: 'review-desk', name: 'Review desk', type: 'desk', w: 140, h: 64, zHeight: 75,
@@ -542,6 +542,133 @@ test('responsive viewports (768x1024 and 390x844) avoid toolbar/HUD clipping and
     assert(metrics.coordsVisible, `Coordinates badge must remain visible at ${vp.width}x${vp.height}.`);
     assert(metrics.stampClearancePx !== null && metrics.stampClearancePx >= 12,
       `2D Sketch scale block must stay at least 12px above bottom readout at ${vp.width}x${vp.height} (got ${metrics.stampClearancePx}px).`);
+  }
+});
+
+test('mobile QR dialog generates SVG QR code and compressed #p= URL round-trips while rejecting corrupted #p=', async page => {
+  // First verify the full default 11-item Studio Bedroom generates a valid scannable QR code
+  await page.locator('#btn-mobile-qr').click();
+  assert(await page.locator('#qr-dialog').evaluate(el => el.open), 'QR dialog must open.');
+  await page.waitForFunction(() => document.querySelector('#qr-url-input').value.includes('#p='));
+  const defaultSvgPath = await page.locator('#qr-code-box svg path').getAttribute('d');
+  assert(defaultSvgPath && defaultSvgPath.length > 200, 'Full default 11-item room must fit in SVG QR code.');
+  await page.locator('[data-close-dialog="qr-dialog"]').first().click();
+
+  const custom = fixture([furniture({ name: 'Shared Mobile Desk', x: 315, y: 210 })]);
+  await load(page, custom);
+  const original = await snapshot(page);
+  await page.locator('#hud-dup').click();
+  const edited = await snapshot(page);
+
+  await page.locator('#btn-mobile-qr').click();
+  assert(await page.locator('#qr-dialog').evaluate(el => el.open), 'QR dialog must open.');
+  await page.waitForFunction(() => document.querySelector('#qr-url-input').value.includes('#p='));
+  const shareUrl = await page.locator('#qr-url-input').inputValue();
+  const svgPath = await page.locator('#qr-code-box svg path').getAttribute('d');
+  assert(svgPath && svgPath.length > 100, 'Offline SVG QR code must render module path.');
+  const hashPart = shareUrl.slice(shareUrl.indexOf('#p='));
+  await page.locator('[data-close-dialog="qr-dialog"]').first().click();
+
+  // Corrupted #p= hash must leave open project, saved project, and undo history untouched
+  await page.evaluate(() => { window.location.hash = '#p=z.!!!invalid_base64_payload!!!'; });
+  await page.evaluate(() => new Promise(r => setTimeout(r, 80)));
+  assert.deepEqual(await snapshot(page), edited, 'Corrupted #p= link must not mutate open state.');
+  assert.deepEqual(await persistedSnapshot(page), edited, 'Corrupted #p= link must not overwrite saved project.');
+  await page.locator('#btn-undo').click();
+  assert.deepEqual((await snapshot(page)).items, original.items, 'Corrupted #p= link must not consume undo history.');
+
+  // Valid #p= hash loads the shared project in a fresh page
+  const mobilePage = await page.context().newPage();
+  try {
+    await mobilePage.goto(`${ORIGIN}/${hashPart}`);
+    await ready(mobilePage);
+    await mobilePage.waitForFunction(() => !window.location.hash.includes('#p='));
+    const loadedOnMobile = await snapshot(mobilePage);
+    assert.equal(loadedOnMobile.items.length, edited.items.length);
+    assert.equal(loadedOnMobile.items[0].name, 'Shared Mobile Desk');
+  } finally {
+    await mobilePage.close();
+  }
+});
+
+test('live Wi-Fi sync (/api/project) synchronizes mobile edits and 1-tap camera photos to PC in real time', async page => {
+  let serverRevision = 0;
+  let serverProject = null;
+  const syncToken = 'testtoken123456';
+
+  await page.context().route('**/api/**', async route => {
+    const url = new URL(route.request().url());
+    const method = route.request().method();
+    if (url.pathname === '/api/sync-info') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          active: true,
+          port: 4173,
+          token: syncToken,
+          lanUrls: [`${ORIGIN}/?sync=${syncToken}`],
+          revision: serverRevision
+        })
+      });
+    }
+    if (url.pathname === '/api/project') {
+      if (method === 'GET') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ revision: serverRevision, updatedAt: Date.now(), project: serverProject })
+        });
+      }
+      if (method === 'POST') {
+        serverProject = JSON.parse(route.request().postData());
+        serverRevision++;
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ ok: true, revision: serverRevision, updatedAt: Date.now() })
+        });
+      }
+    }
+    return route.fulfill({ status: 404, body: '{}' });
+  });
+
+  await page.goto(`${ORIGIN}/?sync=${syncToken}`);
+  await ready(page);
+  await page.waitForFunction(() => document.getElementById('btn-mobile-qr').classList.contains('is-live'));
+
+  // Connect a mobile page via the QR code URL (?sync=...)
+  const phone = await page.context().newPage();
+  try {
+    await phone.setViewportSize({ width: 390, height: 844 });
+    await phone.goto(`${ORIGIN}/?sync=${syncToken}`);
+    await ready(phone);
+
+    // Open mobile bottom drawer, select first furniture item, and attach a camera photo via 1-tap #inp-sel-photo
+    await phone.locator('#btn-mobile-sheet').click();
+    await phone.locator('.item-select-btn').first().click();
+    const onePxPng = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64'
+    );
+    await phone.locator('#inp-sel-photo').setInputFiles({
+      name: 'mobile-camera.png',
+      mimeType: 'image/png',
+      buffer: onePxPng
+    });
+    await phone.waitForFunction(() => !document.getElementById('sel-photo-box').classList.contains('hidden'));
+
+    // Trigger sync check on PC by dispatching focus and verify PC received the photo from the phone
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await page.waitForFunction(() => {
+      const raw = localStorage.getItem('simplecad_project_v5');
+      return raw && raw.includes('data:image/jpeg;base64,');
+    });
+    const syncedOnPc = await snapshot(page);
+    assert(syncedOnPc.items.some(it => typeof it.photoDataUrl === 'string' && it.photoDataUrl.startsWith('data:image/jpeg;base64,')),
+      'PC must receive the compressed furniture photo captured on the mobile device.');
+  } finally {
+    await phone.close();
   }
 });
 

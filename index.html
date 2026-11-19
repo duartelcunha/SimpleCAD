@@ -7,7 +7,8 @@
   <meta name="description" content="SimpleCAD — Estúdio CAD 2D & 3D offline para plantas de interiores, mobiliário e cablagem." />
   <title>SimpleCAD — Studio Bedroom (440×380 cm)</title>
   <link rel="icon" type="image/svg+xml" href="./icon.svg" />
-  <link rel="stylesheet" href="./styles.css?v=36" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="stylesheet" href="./styles.css?v=37" />
 </head>
 <body>
   <div class="app-shell">
@@ -130,8 +131,11 @@
 
         <span role="separator" aria-orientation="vertical" class="tb-sep"></span>
 
-        <!-- Export / Files / Install -->
-        <div class="tb-group" role="group" aria-label="Ficheiros e exportação">
+        <!-- Export / Files / Mobile QR -->
+        <div class="tb-group" role="group" aria-label="Ficheiros, exportação e telemóvel">
+          <button id="btn-mobile-qr" type="button" class="tb-btn tb-btn-icon" aria-label="Abrir no telemóvel por QR Code" title="Usar no Telemóvel ou noutro PC (QR Code)">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3z"/><path d="M20 14v3h-3"/><path d="M14 20h3"/><path d="M20 20h.01"/></svg>
+          </button>
           <button id="btn-open-json" type="button" class="tb-btn tb-btn-icon" aria-label="Guardar ou abrir ficheiro JSON" title="Guardar ou abrir ficheiro .JSON">
             <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M10 13l-2 2 2 2M14 13l2 2-2 2"/></svg>
           </button>
@@ -425,15 +429,24 @@
                 <input id="divider-range" type="range" min="60" max="240" step="5" value="145" aria-label="Largura total da divisória" aria-valuetext="145 centímetros" />
               </div>
 
-              <!-- Optional Reference Photo Preview -->
-              <div id="sel-photo-box" class="sel-photo-box hidden">
+              <!-- Reference Photo Capture & Preview (1-Tap Mobile Camera) -->
+              <div class="sel-photo-section">
                 <div class="rot-head">
-                  <span class="micro-label">FOTO GUARDADA DO MÓVEL</span>
-                  <button id="btn-remove-sel-photo" type="button" class="icon-act" aria-label="Remover foto do móvel" title="Remover foto">
-                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
-                  </button>
+                  <span class="micro-label">FOTO DO MÓVEL</span>
+                  <div class="photo-head-actions">
+                    <label for="inp-sel-photo" id="btn-attach-sel-photo" class="btn-chip photo-capture-btn" title="Tirar foto com a câmara ou escolher da galeria">
+                      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                      <span id="lbl-attach-sel-photo">Fotografar</span>
+                      <input id="inp-sel-photo" type="file" accept="image/*" capture="environment" class="visually-hidden" />
+                    </label>
+                    <button id="btn-remove-sel-photo" type="button" class="icon-act hidden" aria-label="Remover foto do móvel" title="Remover foto">
+                      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                    </button>
+                  </div>
                 </div>
-                <img id="sel-photo-img" src="" alt="Foto de referência do móvel selecionado" />
+                <div id="sel-photo-box" class="sel-photo-box hidden">
+                  <img id="sel-photo-img" src="" alt="Foto de referência do móvel selecionado" />
+                </div>
               </div>
             </div>
           </section>
@@ -703,8 +716,47 @@
     </form>
   </dialog>
 
-  <script src="./default-room.js?v=36"></script>
-  <script src="./project-data.js?v=36"></script>
-  <script src="./app.js?v=36"></script>
+  <!-- MODAL 6: MOBILE QR CODE & ZERO-CONFIG SYNC -->
+  <dialog id="qr-dialog" closedby="any" aria-labelledby="qr-dialog-title">
+    <div class="dialog-card">
+      <div class="dialog-head">
+        <h2 id="qr-dialog-title">Usar no Telemóvel ou Outro PC</h2>
+        <button type="button" class="dialog-close" data-close-dialog="qr-dialog" aria-label="Fechar janela"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      </div>
+      <div class="dialog-body">
+        <div class="qr-mode-tabs" role="group" aria-label="Modo de acesso no telemóvel">
+          <button id="btn-qr-mode-lan" type="button" class="qr-mode-btn" aria-pressed="true">Ao Vivo em Casa (Wi-Fi)</button>
+          <button id="btn-qr-mode-cloud" type="button" class="qr-mode-btn" aria-pressed="false">Em Qualquer Lugar (4G/5G)</button>
+        </div>
+
+        <div id="qr-status-pill" class="qr-status-pill">
+          <span class="pill-dot" aria-hidden="true"></span>
+          <span id="qr-status-text">Pronto a abrir no telemóvel</span>
+        </div>
+
+        <div class="qr-stage">
+          <div id="qr-code-box" class="qr-code-box" role="img" aria-label="Código QR para abrir a planta no telemóvel"></div>
+        </div>
+
+        <p id="qr-helper-text" class="helper-copy qr-helper"></p>
+
+        <div class="field-group">
+          <label for="qr-url-input">ENDEREÇO DIRETO</label>
+          <div class="quick-row">
+            <input id="qr-url-input" type="text" readonly class="field-input tabular" />
+            <button id="btn-copy-qr-url" type="button" class="btn-secondary">Copiar Link</button>
+          </div>
+        </div>
+        <div id="qr-feedback" class="json-feedback" role="status"></div>
+      </div>
+      <div class="dialog-foot">
+        <button type="button" class="btn-primary" data-close-dialog="qr-dialog">Concluído</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="./default-room.js?v=37"></script>
+  <script src="./project-data.js?v=37"></script>
+  <script src="./app.js?v=37"></script>
 </body>
 </html>

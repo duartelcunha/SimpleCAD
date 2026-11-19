@@ -6,9 +6,21 @@
 
   const STORAGE_KEY = 'simplecad_project_v5';
   const MAX_HISTORY = 50;
-  const IS_PREVIEW = new URLSearchParams(window.location.search).get('pure') === '1';
+  const PUBLIC_WEB_URL = 'https://duartelcunha.github.io/SimpleCAD/';
+  const URL_PARAMS = new URLSearchParams(window.location.search);
+  const IS_PREVIEW = URL_PARAMS.get('pure') === '1';
   let storageWarning = '';
   let preserveSavedProject = false;
+
+  const liveSync = {
+    active: false,
+    token: URL_PARAMS.get('sync') || '',
+    lanUrls: [],
+    revision: 0,
+    qrMode: 'lan', // 'lan' | 'cloud'
+    timer: null,
+    inFlight: false
+  };
 
   // =========================================================================
   // 1. STATE & HISTORY
@@ -313,42 +325,53 @@
     r.setAttribute('aria-disabled', history.future.length === 0 ? 'true' : 'false');
   }
 
-  function saveState() {
+  function saveState(skipRemotePush = false) {
     if (IS_PREVIEW || preserveSavedProject) return false;
+    const snap = snapshotProjectData();
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshotProjectData()));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
       if (storageWarning) toastEl.classList.add('hidden');
       storageWarning = '';
+      if (!skipRemotePush && liveSync.active) {
+        pushRemoteProject(snap);
+      }
       return true;
     } catch (_) {
       storageWarning = 'Não foi possível guardar neste dispositivo. Exporta o projeto em JSON antes de fechar.';
       showToast(storageWarning);
+      if (!skipRemotePush && liveSync.active) {
+        pushRemoteProject(snap);
+      }
       return false;
     }
+  }
+
+  function normalizeCandidateProject(parsed) {
+    window.SimpleCADProjectData.assertCompatible(parsed);
+    const layouts = Array.isArray(parsed.layouts) && parsed.layouts.length === 0
+      ? [{ id: 'imported', name: 'Importado', placements: {} }]
+      : (parsed.layouts ?? deepClone(window.DEFAULT_PROJECT.layouts));
+    const candidate = {
+      ...parsed,
+      cables: parsed.cables ?? [],
+      layouts,
+      activeLayoutId: Array.isArray(layouts) && layouts.some(layout => layout?.id === parsed.activeLayoutId)
+        ? parsed.activeLayoutId : layouts[0]?.id,
+      selectedId: parsed.items?.some(item => item?.id === parsed.selectedId)
+        ? parsed.selectedId : (parsed.items?.[0]?.id ?? null),
+      gridStep: parsed.gridStep ?? 5,
+      wallSnap: parsed.wallSnap ?? true,
+      style3d: parsed.style3d ?? 'solid'
+    };
+    window.SimpleCADProjectData.validate(candidate);
+    return candidate;
   }
 
   function loadSavedState() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return false;
-      const parsed = JSON.parse(raw);
-      window.SimpleCADProjectData.assertCompatible(parsed);
-      const layouts = Array.isArray(parsed.layouts) && parsed.layouts.length === 0
-        ? [{ id: 'imported', name: 'Importado', placements: {} }]
-        : (parsed.layouts ?? deepClone(window.DEFAULT_PROJECT.layouts));
-      const candidate = {
-        ...parsed,
-        cables: parsed.cables ?? [],
-        layouts,
-        activeLayoutId: Array.isArray(layouts) && layouts.some(layout => layout?.id === parsed.activeLayoutId)
-          ? parsed.activeLayoutId : layouts[0]?.id,
-        selectedId: parsed.items?.some(item => item?.id === parsed.selectedId)
-          ? parsed.selectedId : (parsed.items?.[0]?.id ?? null),
-        gridStep: parsed.gridStep ?? 5,
-        wallSnap: parsed.wallSnap ?? true,
-        style3d: parsed.style3d ?? 'solid'
-      };
-      window.SimpleCADProjectData.validate(candidate);
+      const candidate = normalizeCandidateProject(JSON.parse(raw));
       applyProjectState(candidate);
       return true;
     } catch (_) {
@@ -356,6 +379,544 @@
       storageWarning = 'O projeto guardado não pôde ser aberto e foi preservado. Importa uma cópia válida ou repõe o projeto demo para voltar a guardar.';
       return false;
     }
+  }
+
+  // =========================================================================
+  // 3B. OFFLINE QR CODE SVG GENERATOR, URL HASH SHARING & LIVE SYNC
+  // =========================================================================
+  const QR_VERSION_L = [
+    null,
+    [19, 7, 1, 19, 0, 0, []],
+    [34, 10, 1, 34, 0, 0, [6, 18]],
+    [55, 15, 1, 55, 0, 0, [6, 22]],
+    [80, 20, 1, 80, 0, 0, [6, 26]],
+    [108, 26, 1, 108, 0, 0, [6, 30]],
+    [136, 18, 2, 68, 0, 0, [6, 34]],
+    [156, 20, 2, 78, 0, 0, [6, 22, 38]],
+    [194, 24, 2, 97, 0, 0, [6, 24, 42]],
+    [232, 30, 2, 116, 0, 0, [6, 26, 46]],
+    [274, 18, 2, 68, 2, 69, [6, 28, 50]],
+    [324, 20, 4, 81, 0, 0, [6, 30, 54]],
+    [370, 24, 2, 92, 2, 93, [6, 32, 58]],
+    [428, 26, 4, 107, 0, 0, [6, 34, 62]],
+    [461, 30, 3, 115, 1, 116, [6, 26, 46, 66]],
+    [523, 22, 5, 87, 1, 88, [6, 26, 48, 70]],
+    [589, 24, 5, 98, 1, 99, [6, 26, 50, 74]],
+    [647, 28, 1, 107, 5, 108, [6, 30, 54, 78]],
+    [721, 30, 5, 120, 1, 121, [6, 30, 56, 82]],
+    [795, 28, 3, 113, 4, 114, [6, 30, 58, 86]],
+    [861, 28, 3, 107, 5, 108, [6, 34, 62, 90]]
+  ];
+
+  const GF_EXP = new Uint8Array(512);
+  const GF_LOG = new Uint8Array(256);
+  (() => {
+    let x = 1;
+    for (let i = 0; i < 255; i++) {
+      GF_EXP[i] = x;
+      GF_LOG[x] = i;
+      x <<= 1;
+      if (x & 0x100) x ^= 0x11d;
+    }
+    for (let i = 255; i < 512; i++) GF_EXP[i] = GF_EXP[i - 255];
+  })();
+
+  function gfMul(a, b) {
+    return (a === 0 || b === 0) ? 0 : GF_EXP[GF_LOG[a] + GF_LOG[b]];
+  }
+
+  function rsGeneratorPoly(degree) {
+    let poly = [1];
+    for (let i = 0; i < degree; i++) {
+      const next = new Array(poly.length + 1).fill(0);
+      const root = GF_EXP[i];
+      for (let j = 0; j < poly.length; j++) {
+        next[j] ^= poly[j];
+        next[j + 1] ^= gfMul(poly[j], root);
+      }
+      poly = next;
+    }
+    return poly;
+  }
+
+  function rsRemainder(data, degree) {
+    const gen = rsGeneratorPoly(degree);
+    const rem = new Uint8Array(degree);
+    for (const byte of data) {
+      const factor = byte ^ rem[0];
+      rem.copyWithin(0, 1);
+      rem[degree - 1] = 0;
+      for (let i = 0; i < degree; i++) {
+        rem[i] ^= gfMul(gen[i + 1], factor);
+      }
+    }
+    return rem;
+  }
+
+  function bchFormatBits(ecLevelBits, mask) {
+    const data = (ecLevelBits << 3) | mask;
+    let rem = data << 10;
+    for (let i = 14; i >= 10; i--) {
+      if ((rem >> i) & 1) rem ^= (0x537 << (i - 10));
+    }
+    return ((data << 10) | rem) ^ 0x5412;
+  }
+
+  function bchVersionBits(ver) {
+    let rem = ver << 12;
+    for (let i = 17; i >= 12; i--) {
+      if ((rem >> i) & 1) rem ^= (0x1f25 << (i - 12));
+    }
+    return (ver << 12) | rem;
+  }
+
+  function generateQrSvg(text) {
+    const bytes = new TextEncoder().encode(String(text || ''));
+    let ver = 1;
+    while (ver <= 20) {
+      const totalData = QR_VERSION_L[ver][0];
+      const countBits = ver < 10 ? 8 : 16;
+      const maxBytes = Math.floor((totalData * 8 - 4 - countBits) / 8);
+      if (bytes.length <= maxBytes) break;
+      ver++;
+    }
+    if (ver > 20) return '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"></svg>';
+
+    const [totalData, ecLen, g1Blocks, g1DataLen, g2Blocks, g2DataLen, alignCenters] = QR_VERSION_L[ver];
+    const bits = [];
+    const pushBits = (val, len) => {
+      for (let i = len - 1; i >= 0; i--) bits.push((val >> i) & 1);
+    };
+
+    pushBits(0b0100, 4);
+    pushBits(bytes.length, ver < 10 ? 8 : 16);
+    for (const b of bytes) pushBits(b, 8);
+
+    const maxDataBits = totalData * 8;
+    const term = Math.min(4, maxDataBits - bits.length);
+    pushBits(0, term);
+    while (bits.length % 8 !== 0) bits.push(0);
+
+    const dataCodewords = new Uint8Array(totalData);
+    for (let i = 0; i < bits.length / 8; i++) {
+      let v = 0;
+      for (let b = 0; b < 8; b++) v = (v << 1) | bits[i * 8 + b];
+      dataCodewords[i] = v;
+    }
+    for (let i = bits.length / 8, padIdx = 0; i < totalData; i++, padIdx++) {
+      dataCodewords[i] = padIdx % 2 === 0 ? 0xec : 0x11;
+    }
+
+    const dataBlocks = [];
+    const ecBlocks = [];
+    let offset = 0;
+    for (let i = 0; i < g1Blocks; i++) {
+      const blk = dataCodewords.slice(offset, offset + g1DataLen);
+      offset += g1DataLen;
+      dataBlocks.push(blk);
+      ecBlocks.push(rsRemainder(blk, ecLen));
+    }
+    for (let i = 0; i < g2Blocks; i++) {
+      const blk = dataCodewords.slice(offset, offset + g2DataLen);
+      offset += g2DataLen;
+      dataBlocks.push(blk);
+      ecBlocks.push(rsRemainder(blk, ecLen));
+    }
+
+    const finalBytes = [];
+    const maxBlkLen = Math.max(g1DataLen, g2DataLen);
+    for (let i = 0; i < maxBlkLen; i++) {
+      for (const blk of dataBlocks) if (i < blk.length) finalBytes.push(blk[i]);
+    }
+    for (let i = 0; i < ecLen; i++) {
+      for (const blk of ecBlocks) finalBytes.push(blk[i]);
+    }
+
+    const size = ver * 4 + 17;
+    const modules = Array.from({ length: size }, () => new Uint8Array(size));
+    const isFunc = Array.from({ length: size }, () => new Uint8Array(size));
+    const setFunc = (r, c, dark) => {
+      if (r < 0 || r >= size || c < 0 || c >= size) return;
+      modules[r][c] = dark ? 1 : 0;
+      isFunc[r][c] = 1;
+    };
+
+    const placeFinder = (topR, leftC) => {
+      for (let dr = -1; dr <= 7; dr++) {
+        for (let dc = -1; dc <= 7; dc++) {
+          const inOuter = dr >= 0 && dr <= 6 && dc >= 0 && dc <= 6;
+          const onBorder = dr === 0 || dr === 6 || dc === 0 || dc === 6;
+          const inCore = dr >= 2 && dr <= 4 && dc >= 2 && dc <= 4;
+          setFunc(topR + dr, leftC + dc, inOuter && (onBorder || inCore));
+        }
+      }
+    };
+    placeFinder(0, 0);
+    placeFinder(0, size - 7);
+    placeFinder(size - 7, 0);
+
+    for (let i = 8; i < size - 8; i++) {
+      setFunc(6, i, i % 2 === 0);
+      setFunc(i, 6, i % 2 === 0);
+    }
+
+    for (const r of alignCenters) {
+      for (const c of alignCenters) {
+        if ((r === 6 && c === 6) || (r === 6 && c === size - 7) || (r === size - 7 && c === 6)) continue;
+        for (let dr = -2; dr <= 2; dr++) {
+          for (let dc = -2; dc <= 2; dc++) {
+            setFunc(r + dr, c + dc, Math.max(Math.abs(dr), Math.abs(dc)) !== 1);
+          }
+        }
+      }
+    }
+
+    for (let i = 0; i < 9; i++) {
+      if (i !== 6) {
+        setFunc(8, i, false);
+        setFunc(i, 8, false);
+      }
+    }
+    for (let i = 0; i < 8; i++) {
+      setFunc(8, size - 1 - i, false);
+      setFunc(size - 1 - i, 8, false);
+    }
+    setFunc(4 * ver + 9, 8, true);
+
+    if (ver >= 7) {
+      const vBits = bchVersionBits(ver);
+      for (let i = 0; i < 18; i++) {
+        const bit = ((vBits >> i) & 1) === 1;
+        const a = size - 11 + (i % 3);
+        const b = Math.floor(i / 3);
+        setFunc(b, a, bit);
+        setFunc(a, b, bit);
+      }
+    }
+
+    let bitIdx = 0;
+    const totalBits = finalBytes.length * 8;
+    for (let right = size - 1; right >= 1; right -= 2) {
+      if (right === 6) right = 5;
+      const upward = ((size - 1 - right) & 2) === 0;
+      for (let vert = 0; vert < size; vert++) {
+        const r = upward ? (size - 1 - vert) : vert;
+        for (let j = 0; j < 2; j++) {
+          const c = right - j;
+          if (isFunc[r][c]) continue;
+          let dark = false;
+          if (bitIdx < totalBits) {
+            dark = ((finalBytes[bitIdx >> 3] >> (7 - (bitIdx & 7))) & 1) === 1;
+            bitIdx++;
+          }
+          if ((r + c) % 2 === 0) dark = !dark; // Mask 0
+          modules[r][c] = dark ? 1 : 0;
+        }
+      }
+    }
+
+    const fmtBits = bchFormatBits(0b01, 0); // Level L (01), Mask 0
+    for (let i = 0; i <= 5; i++) setFunc(8, i, ((fmtBits >> i) & 1) === 1);
+    setFunc(8, 7, ((fmtBits >> 6) & 1) === 1);
+    setFunc(8, 8, ((fmtBits >> 7) & 1) === 1);
+    setFunc(7, 8, ((fmtBits >> 8) & 1) === 1);
+    for (let i = 9; i < 15; i++) setFunc(14 - i, 8, ((fmtBits >> i) & 1) === 1);
+    for (let i = 0; i < 8; i++) setFunc(8, size - 1 - i, ((fmtBits >> i) & 1) === 1);
+    for (let i = 8; i < 15; i++) setFunc(size - 15 + i, 8, ((fmtBits >> i) & 1) === 1);
+
+    const pad = 2;
+    const full = size + pad * 2;
+    let d = '';
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        if (modules[r][c]) d += `M${c + pad} ${r + pad}h1v1h-1z`;
+      }
+    }
+    return `<svg viewBox="0 0 ${full} ${full}" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"><rect width="${full}" height="${full}" fill="#ffffff"/><path d="${d}" fill="#0a0b0d"/></svg>`;
+  }
+
+  function bytesToBase64Url(bytes) {
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  function base64UrlToBytes(b64url) {
+    const b64 = String(b64url || '').replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '==='.slice((b64.length + 3) % 4);
+    const bin = atob(padded);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  async function encodeProjectToUrlHash(snap) {
+    const src = snap || snapshotProjectData();
+    const r = src.room || {};
+    const compact = [
+      'c1',
+      [
+        r.name || 'Quarto',
+        Number(r.w) || 440,
+        Number(r.h) || 380,
+        Number(r.wallThickness ?? 14),
+        (r.doors || []).map(d => [d.id, d.name || 'Porta', d.wall, Number(d.offset) || 0, Number(d.width) || 90, d.hinge || 'left', d.swing || 'inward']),
+        (r.windows || []).map(w => [w.id, w.name || 'Janela', w.wall, Number(w.offset) || 0, Number(w.width) || 100]),
+        (r.outlets || []).map(o => [o.id, o.name || o.id, o.wall, Number(o.pos) || 0])
+      ],
+      (src.items || []).map(it => [
+        it.id,
+        it.name,
+        it.type || 'box',
+        Number(it.w) || 60,
+        Number(it.h) || 45,
+        Number(it.zHeight) || 75,
+        Number(Number(it.x || 0).toFixed(1)),
+        Number(Number(it.y || 0).toFixed(1)),
+        Number(Number(it.rot || 0).toFixed(1)),
+        it.color || 'zinc',
+        it.ignoreCollision ? 1 : 0,
+        it.lockedDims ? 1 : 0,
+        it.visible === false ? 0 : 1,
+        it.type === 'divider' ? sanitizeFoldAngles(it.foldAngles) : null
+      ]),
+      (src.cables || []).map(c => [
+        c.id,
+        c.name,
+        c.fromId,
+        c.toId,
+        Number(c.maxMeters) || 3,
+        Number(c.warnMeters) || 2.5,
+        c.routingMode || 'direct',
+        c.color || '#6e9887',
+        c.visible === false ? 0 : 1
+      ]),
+      [src.gridStep ?? 5, src.wallSnap !== false ? 1 : 0, src.style3d || 'solid', src.selectedId || null]
+    ];
+    const rawBytes = new TextEncoder().encode(JSON.stringify(compact));
+    if (typeof CompressionStream === 'function') {
+      try {
+        const cs = new CompressionStream('deflate-raw');
+        const writer = cs.writable.getWriter();
+        writer.write(rawBytes);
+        writer.close();
+        const buf = await new Response(cs.readable).arrayBuffer();
+        return `z.${bytesToBase64Url(new Uint8Array(buf))}`;
+      } catch (_) {}
+    }
+    return `u.${bytesToBase64Url(rawBytes)}`;
+  }
+
+  function unpackCompactProject(arr) {
+    if (!Array.isArray(arr) || arr[0] !== 'c1' || !Array.isArray(arr[1]) || !Array.isArray(arr[2])) {
+      return arr;
+    }
+    const [rTuple, iTuples, cTuples, meta] = [arr[1], arr[2], arr[3] || [], arr[4] || []];
+    const items = iTuples.map(t => ({
+      id: String(t[0]),
+      name: String(t[1]),
+      type: String(t[2] || 'box'),
+      w: Number(t[3]),
+      h: Number(t[4]),
+      zHeight: Number(t[5]),
+      x: Number(t[6]),
+      y: Number(t[7]),
+      rot: Number(t[8]),
+      color: String(t[9] || 'zinc'),
+      ignoreCollision: Boolean(t[10]),
+      lockedDims: Boolean(t[11]),
+      visible: t[12] !== 0,
+      ...(t[2] === 'divider' ? { foldAngles: sanitizeFoldAngles(t[13]) } : {}),
+      photoDataUrl: null
+    }));
+    const placements = {};
+    for (const it of items) {
+      placements[it.id] = {
+        cx: it.x, cy: it.y, rot: it.rot, w: it.w, h: it.h, zHeight: it.zHeight, visible: it.visible,
+        ...(it.type === 'divider' ? { foldAngles: it.foldAngles } : {})
+      };
+    }
+    return {
+      version: 2,
+      app: 'SimpleCAD',
+      room: {
+        name: String(rTuple[0] || 'Quarto'),
+        w: Number(rTuple[1]),
+        h: Number(rTuple[2]),
+        wallThickness: Number(rTuple[3] ?? 14),
+        doors: (rTuple[4] || []).map(d => ({ id: String(d[0]), name: String(d[1]), wall: String(d[2]), offset: Number(d[3]), width: Number(d[4]), hinge: String(d[5] || 'left'), swing: String(d[6] || 'inward') })),
+        windows: (rTuple[5] || []).map(w => ({ id: String(w[0]), name: String(w[1]), wall: String(w[2]), offset: Number(w[3]), width: Number(w[4]) })),
+        outlets: (rTuple[6] || []).map(o => ({ id: String(o[0]), name: String(o[1]), wall: String(o[2]), pos: Number(o[3]) }))
+      },
+      items,
+      cables: cTuples.map(c => ({
+        id: String(c[0]), name: String(c[1]), fromId: String(c[2]), toId: String(c[3]),
+        maxMeters: Number(c[4]), warnMeters: Number(c[5]), routingMode: String(c[6] || 'direct'),
+        color: String(c[7] || '#6e9887'), visible: c[8] !== 0
+      })),
+      layouts: [{ id: 'shared', name: 'Planta Partilhada', builtIn: false, placements }],
+      activeLayoutId: 'shared',
+      gridStep: Number(meta[0] ?? 5),
+      wallSnap: meta[1] !== 0,
+      style3d: String(meta[2] || 'solid'),
+      selectedId: meta[3] || (items[0]?.id ?? null)
+    };
+  }
+
+  async function decodeProjectFromUrlHash(encoded) {
+    const raw = String(encoded || '').trim();
+    if (!raw) throw new Error('Link de projeto vazio.');
+    const isDeflate = raw.startsWith('z.');
+    const payload = (raw.startsWith('z.') || raw.startsWith('u.')) ? raw.slice(2) : raw;
+    const bytes = base64UrlToBytes(payload);
+    let jsonText;
+    if (isDeflate && typeof DecompressionStream === 'function') {
+      const ds = new DecompressionStream('deflate-raw');
+      const writer = ds.writable.getWriter();
+      writer.write(bytes);
+      writer.close();
+      const buf = await new Response(ds.readable).arrayBuffer();
+      jsonText = new TextDecoder().decode(buf);
+    } else {
+      jsonText = new TextDecoder().decode(bytes);
+    }
+    const parsed = unpackCompactProject(JSON.parse(jsonText));
+    return normalizeCandidateProject(parsed);
+  }
+
+  async function tryLoadFromUrlHash() {
+    const hash = window.location.hash || '';
+    const match = hash.match(/(?:^#|&)p=([^&]+)/);
+    if (!match) return false;
+    try {
+      const candidate = await decodeProjectFromUrlHash(decodeURIComponent(match[1]));
+      pushUndoSnapshot();
+      applyProjectState(candidate);
+      saveState();
+      syncUI();
+      if (window.history && typeof window.history.replaceState === 'function') {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
+      showToast('Planta carregada a partir do link/QR Code!');
+      return true;
+    } catch (_) {
+      showToast('Link de planta inválido — o projeto atual foi mantido.');
+      return false;
+    }
+  }
+
+  async function pushRemoteProject(snap) {
+    if (!liveSync.active || IS_PREVIEW) return;
+    try {
+      const q = liveSync.token ? `?token=${encodeURIComponent(liveSync.token)}` : '';
+      const res = await fetch(`/api/project${q}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(snap || snapshotProjectData())
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (typeof data.revision === 'number') {
+        liveSync.revision = Math.max(liveSync.revision, data.revision);
+      }
+    } catch (_) {}
+  }
+
+  async function pullRemoteProject(isInitial = false) {
+    if (!liveSync.active || liveSync.inFlight || interaction.mode) return;
+    liveSync.inFlight = true;
+    try {
+      const q = liveSync.token ? `?token=${encodeURIComponent(liveSync.token)}` : '';
+      const res = await fetch(`/api/project${q}`, { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && data.project && typeof data.revision === 'number') {
+        if (isInitial || data.revision > liveSync.revision) {
+          const candidate = normalizeCandidateProject(data.project);
+          liveSync.revision = data.revision;
+          applyProjectState(candidate);
+          saveState(true);
+          syncUI();
+          if (!isInitial) showToast('Sincronizado em tempo real');
+        }
+      } else if (isInitial && (!data || !data.project)) {
+        await pushRemoteProject(snapshotProjectData());
+      }
+    } catch (_) {
+    } finally {
+      liveSync.inFlight = false;
+    }
+  }
+
+  async function initLiveSync() {
+    if (IS_PREVIEW) return;
+    const isNativeHost = window.location.protocol === 'simplecad:';
+    if (!isNativeHost && !liveSync.token) return;
+    try {
+      const q = liveSync.token ? `?token=${encodeURIComponent(liveSync.token)}` : '';
+      const res = await fetch(`/api/sync-info${q}`, { cache: 'no-store' });
+      if (!res.ok) return;
+      const info = await res.json();
+      if (!info || !info.active) return;
+      liveSync.active = true;
+      liveSync.token = info.token || liveSync.token;
+      liveSync.lanUrls = Array.isArray(info.lanUrls) ? info.lanUrls : [];
+      const qrBtn = document.getElementById('btn-mobile-qr');
+      if (qrBtn) qrBtn.classList.add('is-live');
+      await pullRemoteProject(true);
+      if (!liveSync.timer) {
+        liveSync.timer = setInterval(() => pullRemoteProject(false), 1200);
+        window.addEventListener('focus', () => pullRemoteProject(false));
+        document.addEventListener('visibilitychange', () => {
+          if (!document.hidden) pullRemoteProject(false);
+        });
+      }
+    } catch (_) {}
+  }
+
+  async function updateQrDialogUI() {
+    const bLan = document.getElementById('btn-qr-mode-lan');
+    const bCloud = document.getElementById('btn-qr-mode-cloud');
+    const statusText = document.getElementById('qr-status-text');
+    const helperText = document.getElementById('qr-helper-text');
+    const urlInput = document.getElementById('qr-url-input');
+    const qrBox = document.getElementById('qr-code-box');
+    const fb = document.getElementById('qr-feedback');
+    if (!bLan || !bCloud || !qrBox || !urlInput) return;
+
+    fb.textContent = '';
+    const isLanMode = liveSync.qrMode === 'lan';
+    bLan.setAttribute('aria-pressed', isLanMode ? 'true' : 'false');
+    bCloud.setAttribute('aria-pressed', !isLanMode ? 'true' : 'false');
+
+    let targetUrl = '';
+    if (isLanMode) {
+      if (liveSync.active && liveSync.lanUrls.length > 0) {
+        targetUrl = liveSync.lanUrls[0];
+        statusText.textContent = 'Ao Vivo · Sincronização automática PC ↔ Telemóvel';
+        helperText.textContent = 'Com o telemóvel ligado ao mesmo Wi-Fi deste PC, aponta a câmara ao QR Code. Tudo o que mudares ou fotografares no telemóvel aparece logo aqui no PC.';
+      } else {
+        const origin = window.location.origin.startsWith('http') ? `${window.location.origin}${window.location.pathname}` : PUBLIC_WEB_URL;
+        const hash = await encodeProjectToUrlHash();
+        targetUrl = `${origin}#p=${hash}`;
+        statusText.textContent = 'Pronto a abrir no telemóvel';
+        helperText.textContent = 'Aponta a câmara do telemóvel ao QR Code para abrir esta planta no telemóvel. (Abre o SimpleCAD.exe no PC para ativar a sincronização ao vivo em Wi-Fi).';
+      }
+    } else {
+      const hash = await encodeProjectToUrlHash();
+      targetUrl = `${PUBLIC_WEB_URL}#p=${hash}`;
+      statusText.textContent = 'Link Online 100% Gratuito (4G/5G · Sem Servidor)';
+      helperText.textContent = 'Este QR Code contém a tua planta comprimida. Podes abri-lo em qualquer lugar (mesmo em 4G/5G fora de casa ou com o PC desligado) e instalar a app no telemóvel.';
+    }
+
+    urlInput.value = targetUrl;
+    qrBox.innerHTML = generateQrSvg(targetUrl);
+  }
+
+  function openQrDialog() {
+    liveSync.qrMode = (liveSync.active && liveSync.lanUrls.length > 0) ? 'lan' : 'cloud';
+    updateQrDialogUI();
+    openDialogSafe('qr-dialog');
   }
 
   // =========================================================================
@@ -5096,11 +5657,17 @@
       }
 
       const photoBox = document.getElementById('sel-photo-box');
+      const removePhotoBtn = document.getElementById('btn-remove-sel-photo');
+      const attachPhotoLbl = document.getElementById('lbl-attach-sel-photo');
       if (sel.photoDataUrl) {
         photoBox.classList.remove('hidden');
         document.getElementById('sel-photo-img').src = sel.photoDataUrl;
+        if (removePhotoBtn) removePhotoBtn.classList.remove('hidden');
+        if (attachPhotoLbl) attachPhotoLbl.textContent = 'Trocar Foto';
       } else {
         photoBox.classList.add('hidden');
+        if (removePhotoBtn) removePhotoBtn.classList.add('hidden');
+        if (attachPhotoLbl) attachPhotoLbl.textContent = 'Fotografar';
       }
     }
 
@@ -5527,6 +6094,26 @@
       syncUI();
     });
 
+    const qrBtn = document.getElementById('btn-mobile-qr');
+    if (qrBtn) qrBtn.addEventListener('click', openQrDialog);
+    const qrLanBtn = document.getElementById('btn-qr-mode-lan');
+    const qrCloudBtn = document.getElementById('btn-qr-mode-cloud');
+    if (qrLanBtn) qrLanBtn.addEventListener('click', () => { liveSync.qrMode = 'lan'; updateQrDialogUI(); });
+    if (qrCloudBtn) qrCloudBtn.addEventListener('click', () => { liveSync.qrMode = 'cloud'; updateQrDialogUI(); });
+    const copyQrBtn = document.getElementById('btn-copy-qr-url');
+    if (copyQrBtn) {
+      copyQrBtn.addEventListener('click', async () => {
+        const val = document.getElementById('qr-url-input').value;
+        const fb = document.getElementById('qr-feedback');
+        try {
+          await navigator.clipboard.writeText(val);
+          fb.textContent = 'Link copiado para a área de transferência!';
+        } catch (_) {
+          fb.textContent = 'Seleciona e copia o endereço manualmente.';
+        }
+      });
+    }
+
     document.getElementById('btn-open-json').addEventListener('click', openJsonDialog);
     document.getElementById('btn-export-png').addEventListener('click', exportPNG);
 
@@ -5665,6 +6252,21 @@
       }
     });
     dividerSlider.addEventListener('change', () => saveState());
+    const selPhotoInput = document.getElementById('inp-sel-photo');
+    if (selPhotoInput) {
+      selPhotoInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+          const dataUrl = await compressImageToDataURL(file);
+          mutateSelected(sel => { sel.photoDataUrl = dataUrl; }, 'Foto guardada no móvel!');
+        } catch (_) {
+          showToast('Não foi possível ler a imagem.');
+        } finally {
+          selPhotoInput.value = '';
+        }
+      });
+    }
     document.getElementById('btn-remove-sel-photo').addEventListener('click', () => {
       mutateSelected(sel => { sel.photoDataUrl = null; }, 'Foto removida');
     });
@@ -5947,6 +6549,14 @@
     bindAllEvents();
     onResize();
     syncUI();
+    if (!isPure) {
+      tryLoadFromUrlHash();
+      window.addEventListener('hashchange', () => { tryLoadFromUrlHash(); });
+      initLiveSync();
+      if ('serviceWorker' in navigator && (window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      }
+    }
   }
 
   window.addEventListener('load', init);
