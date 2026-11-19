@@ -1314,6 +1314,8 @@ select.field-input {
   color: var(--text);
   font-size: 12px;
   font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .btn-danger {

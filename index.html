@@ -8,7 +8,7 @@
   <title>SimpleCAD — Studio Bedroom (440×380 cm)</title>
   <link rel="icon" type="image/svg+xml" href="./icon.svg" />
   <link rel="manifest" href="./manifest.webmanifest" />
-  <link rel="stylesheet" href="./styles.css?v=38" />
+  <link rel="stylesheet" href="./styles.css?v=40" />
 </head>
 <body>
   <div class="app-shell">
@@ -720,43 +720,43 @@
   <dialog id="qr-dialog" closedby="any" aria-labelledby="qr-dialog-title">
     <div class="dialog-card">
       <div class="dialog-head">
-        <h2 id="qr-dialog-title">Usar no Telemóvel ou Outro PC</h2>
+        <h2 id="qr-dialog-title">Abrir no Telemóvel</h2>
         <button type="button" class="dialog-close" data-close-dialog="qr-dialog" aria-label="Fechar janela"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
       </div>
       <div class="dialog-body">
-        <div class="qr-mode-tabs" role="group" aria-label="Modo de acesso no telemóvel">
-          <button id="btn-qr-mode-lan" type="button" class="qr-mode-btn" aria-pressed="true">Ao Vivo em Casa (Wi-Fi)</button>
-          <button id="btn-qr-mode-cloud" type="button" class="qr-mode-btn" aria-pressed="false">Em Qualquer Lugar (4G/5G)</button>
+        <div class="qr-mode-tabs" role="group" aria-label="Modo de ligação">
+          <button id="btn-qr-mode-lan" type="button" class="qr-mode-btn" aria-pressed="true">Rede Local (Wi-Fi)</button>
+          <button id="btn-qr-mode-cloud" type="button" class="qr-mode-btn" aria-pressed="false">Link Web</button>
         </div>
 
-        <div id="qr-status-pill" class="qr-status-pill">
+        <div id="qr-status-pill" class="qr-status-pill hidden">
           <span class="pill-dot" aria-hidden="true"></span>
-          <span id="qr-status-text">Pronto a abrir no telemóvel</span>
+          <span id="qr-status-text">Sincronização ativa</span>
         </div>
 
         <div class="qr-stage">
-          <div id="qr-code-box" class="qr-code-box" role="img" aria-label="Código QR para abrir a planta no telemóvel"></div>
+          <div id="qr-code-box" class="qr-code-box" role="img" aria-label="Código QR da planta"></div>
         </div>
 
         <p id="qr-helper-text" class="helper-copy qr-helper"></p>
 
         <div class="field-group">
-          <label for="qr-url-input">ENDEREÇO DIRETO</label>
+          <label for="qr-url-input">LINK</label>
           <div class="quick-row">
             <input id="qr-url-input" type="text" readonly class="field-input tabular" />
-            <button id="btn-copy-qr-url" type="button" class="btn-secondary">Copiar Link</button>
+            <button id="btn-copy-qr-url" type="button" class="btn-secondary">Copiar</button>
           </div>
         </div>
         <div id="qr-feedback" class="json-feedback" role="status"></div>
       </div>
       <div class="dialog-foot">
-        <button type="button" class="btn-primary" data-close-dialog="qr-dialog">Concluído</button>
+        <button type="button" class="btn-primary" data-close-dialog="qr-dialog">Fechar</button>
       </div>
     </div>
   </dialog>
 
-  <script src="./default-room.js?v=38"></script>
-  <script src="./project-data.js?v=38"></script>
-  <script src="./app.js?v=38"></script>
+  <script src="./default-room.js?v=40"></script>
+  <script src="./project-data.js?v=40"></script>
+  <script src="./app.js?v=40"></script>
 </body>
 </html>

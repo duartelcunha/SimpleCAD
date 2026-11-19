@@ -923,6 +923,7 @@
   async function updateQrDialogUI() {
     const bLan = document.getElementById('btn-qr-mode-lan');
     const bCloud = document.getElementById('btn-qr-mode-cloud');
+    const statusPill = document.getElementById('qr-status-pill');
     const statusText = document.getElementById('qr-status-text');
     const helperText = document.getElementById('qr-helper-text');
     const urlInput = document.getElementById('qr-url-input');
@@ -942,21 +943,22 @@
 
     if (isLanMode && routableLanUrl) {
       targetUrl = routableLanUrl;
-      statusText.textContent = 'Ao Vivo · Sincronização automática PC ↔ Telemóvel';
-      helperText.textContent = 'Com o telemóvel ligado ao mesmo Wi-Fi deste PC, aponta a câmara ao QR Code. Tudo o que mudares ou fotografares no telemóvel aparece logo aqui no PC.';
+      if (statusPill) statusPill.classList.remove('hidden');
+      statusText.textContent = 'Sincronização ativa';
+      helperText.textContent = 'Lê o código no mesmo Wi-Fi para sincronizar alterações e fotos.';
     } else if (isLanMode) {
       const host = window.location.hostname;
       const isRoutableOrigin = window.location.origin.startsWith('http') && host !== '127.0.0.1' && host !== 'localhost';
       const base = isRoutableOrigin ? `${window.location.origin}${window.location.pathname}` : PUBLIC_WEB_URL;
       const hash = await encodeProjectToUrlHash(null, true);
       targetUrl = hash ? `${base}#p=${hash}` : base;
-      statusText.textContent = 'Pronto a abrir no telemóvel (Link Online)';
-      helperText.textContent = 'Aponta a câmara do telemóvel ao QR Code para abrir esta planta no telemóvel. (Para sincronização ao vivo em Wi-Fi, usa o SimpleCAD.exe no PC).';
+      if (statusPill) statusPill.classList.add('hidden');
+      helperText.textContent = 'Lê o código com a câmara para abrir a planta.';
     } else {
       const hash = await encodeProjectToUrlHash(null, true);
       targetUrl = hash ? `${PUBLIC_WEB_URL}#p=${hash}` : PUBLIC_WEB_URL;
-      statusText.textContent = 'Link Online 100% Gratuito (4G/5G · Sem Servidor)';
-      helperText.textContent = 'Este QR Code contém a tua planta comprimida. Podes abri-lo em qualquer lugar (mesmo em 4G/5G fora de casa ou com o PC desligado) e instalar a app no telemóvel.';
+      if (statusPill) statusPill.classList.add('hidden');
+      helperText.textContent = 'Lê o código com a câmara para abrir a planta.';
     }
 
     urlInput.value = targetUrl;
