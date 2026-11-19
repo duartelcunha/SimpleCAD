@@ -2273,28 +2273,32 @@ dialog[open]:not([data-closing])::backdrop {
     order: 3;
     flex: 1 1 100%;
     width: 100%;
+    flex-wrap: wrap;
+    overflow-x: visible;
     gap: 5px;
     padding: 2px 0;
   }
 
   .tb-select {
-    min-block-size: 40px;
-    min-inline-size: 215px;
+    min-block-size: 38px;
+    min-inline-size: 136px;
+    max-inline-size: 184px;
+    flex: 1 1 140px;
     font-size: 12px;
   }
 
   .tb-btn {
-    min-height: 40px;
-    min-width: 40px;
+    min-height: 38px;
+    min-width: 38px;
   }
 
   .view-segmented {
-    min-height: 40px;
+    min-height: 38px;
     padding: 3px;
   }
 
   .view-seg-btn {
-    min-height: 32px;
+    min-height: 30px;
     padding: 0 10px;
   }
 
@@ -2310,7 +2314,7 @@ dialog[open]:not([data-closing])::backdrop {
   .object-hud {
     top: 10px;
     width: calc(100% - 16px);
-    max-width: 460px;
+    max-width: 480px;
     padding: 8px 10px;
   }
 
@@ -2329,14 +2333,10 @@ dialog[open]:not([data-closing])::backdrop {
   }
 
   .hud-actions {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
+    flex-wrap: wrap;
+    overflow-x: visible;
     justify-content: space-between;
     gap: 4px;
-  }
-  .hud-actions::-webkit-scrollbar {
-    display: none;
   }
 
   .hud-btn {
@@ -2351,10 +2351,6 @@ dialog[open]:not([data-closing])::backdrop {
     font-size: 10px;
     padding: 7px 11px;
     max-width: calc(100% - 156px);
-  }
-
-  #cursor-coords {
-    display: none;
   }
 
   .zoom-controls {
@@ -2466,10 +2462,51 @@ dialog[open]:not([data-closing])::backdrop {
   }
 }
 
-@media (max-width: 420px) {
-  .tb-select {
-    min-inline-size: 196px;
-    font-size: 11.5px;
+@media (max-width: 680px) {
+  .toolbar-scroll {
+    row-gap: 6px;
+    column-gap: 4px;
+    justify-content: space-between;
+  }
+
+  .toolbar-scroll > .tb-sep {
+    opacity: 0;
+    width: 0;
+    margin: 0;
+  }
+
+  .toolbar-scroll > .tb-group:first-of-type {
+    flex: 1 1 140px;
+    min-inline-size: 0;
+  }
+
+  .toolbar-scroll > .tb-group:first-of-type .tb-select {
+    flex: 1 1 0;
+    width: 0;
+    min-inline-size: 96px;
+    max-inline-size: none;
+    padding-inline: 8px 24px;
+  }
+}
+
+@media (max-width: 440px) {
+  .object-hud {
+    padding: 7px 8px;
+  }
+
+  .hud-actions {
+    gap: 3px;
+  }
+
+  .hud-sep {
+    margin: 0 1px;
+  }
+
+  .hud-btn {
+    min-height: 34px;
+    min-width: 31px;
+    padding: 0 5px;
+    flex: 1 1 auto;
   }
 
   .grid-2,

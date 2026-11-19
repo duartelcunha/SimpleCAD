@@ -1032,7 +1032,7 @@
     const hudVisible = hudEl && !hudEl.classList.contains('hidden');
     const hudBottom = hudVisible ? (hudEl.offsetTop + hudEl.offsetHeight) : 0;
     const padTop = isPure ? 64 : Math.max(vw < 640 ? 58 : 112, hudBottom > 0 ? hudBottom + 44 : 0);
-    const padBot = isPure ? 96 : (vw < 640 ? 78 : 124);
+    const padBot = isPure ? 96 : (vw <= 768 ? 176 : 124);
     const availW = Math.max(120, vw - padSide * 2);
     const availH = Math.max(120, vh - padTop - padBot);
     const wtSpan = (Number(state.room.wallThickness) || 14) * 2;
@@ -1597,9 +1597,11 @@
     // Architectural Drawing Stamp & Room Area Stamp (Bottom-Left)
     if (!isBlueprint && isInteractive) {
       const hasHudBottomReadout = (targetCtx === ctx) && !document.body.classList.contains('pure-cad');
-      const stampX = 16;
+      const stampX = widthPx <= 768 ? 10 : 16;
       const stampH = 52;
-      const stampY = hasHudBottomReadout ? Math.max(16, heightPx - 116) : (heightPx - 68);
+      const readoutEl = hasHudBottomReadout ? document.querySelector('.bottom-readout') : null;
+      const readoutTop = (readoutEl && readoutEl.offsetParent) ? readoutEl.offsetTop : (heightPx - 50);
+      const stampY = hasHudBottomReadout ? Math.max(16, Math.min(heightPx - 116, readoutTop - stampH - 16)) : (heightPx - 68);
       const stampTitle = (state.room.name || 'STUDIO ROOM').toUpperCase();
       const areaM2 = ((state.room.w * state.room.h) / 10000).toFixed(2);
       const areaLine = `ÁREA: ${areaM2} m² | PAREDE: ${wallThickness} cm`;
@@ -5459,6 +5461,9 @@
 
   function bindAllEvents() {
     window.addEventListener('resize', onResize);
+    if (typeof ResizeObserver === 'function') {
+      new ResizeObserver(() => onResize()).observe(viewport);
+    }
     bindCanvasPointers();
 
     // Populate modal archetype dropdown
@@ -5669,8 +5674,8 @@
     ['room-w', 'room-h'].forEach(id => {
       document.getElementById(id).addEventListener('change', () => {
         pushUndoSnapshot();
-        state.room.w = Math.max(100, Math.min(1500, Number(document.getElementById('room-w').value) || 440));
-        state.room.h = Math.max(100, Math.min(1500, Number(document.getElementById('room-h').value) || 380));
+        state.room.w = Math.max(100, Math.min(2000, Number(document.getElementById('room-w').value) || 440));
+        state.room.h = Math.max(100, Math.min(2000, Number(document.getElementById('room-h').value) || 380));
         saveState();
         syncUI();
       });

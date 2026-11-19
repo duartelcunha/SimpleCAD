@@ -463,6 +463,88 @@ test('3D occlusion hides rear nightstand and handles behind the wardrobe', async
   assert.equal(sketchOccluded.amber, 0, 'Sketch 3D must also occlude the rear amber nightstand behind the front wardrobe.');
 });
 
+test('sidebar room dimension inputs accept up to 2000 cm and clamp out-of-range values', async page => {
+  await page.locator('#tab-btn-room').click();
+  assert.equal(await page.locator('#room-w').getAttribute('max'), '2000');
+  assert.equal(await page.locator('#room-h').getAttribute('max'), '2000');
+  await page.locator('#room-w').fill('2000');
+  await page.locator('#room-w').dispatchEvent('change');
+  await page.locator('#room-h').fill('1850');
+  await page.locator('#room-h').dispatchEvent('change');
+  const updated = await snapshot(page);
+  assert.equal(updated.room.w, 2000);
+  assert.equal(updated.room.h, 1850);
+  assert.equal(await page.locator('#room-size-badge').textContent(), '2000×1850 cm');
+  assert.equal((await persistedSnapshot(page)).room.w, 2000);
+
+  await page.locator('#room-w').fill('2500');
+  await page.locator('#room-w').dispatchEvent('change');
+  await page.locator('#room-h').fill('50');
+  await page.locator('#room-h').dispatchEvent('change');
+  const clamped = await snapshot(page);
+  assert.equal(clamped.room.w, 2000, 'Values above 2000 cm must clamp to 2000 cm.');
+  assert.equal(clamped.room.h, 100, 'Values below 100 cm must clamp to 100 cm.');
+});
+
+test('responsive viewports (768x1024 and 390x844) avoid toolbar/HUD clipping and keep Sketch stamp clear of coordinates', async page => {
+  await page.locator('#btn-view-2d').click();
+  await page.locator('#btn-style3d-sketch').click();
+  await page.locator('.item-select-btn').first().click();
+
+  for (const vp of [{ width: 768, height: 1024 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(vp);
+    await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+    const metrics = await page.evaluate((vw) => {
+      const tb = document.getElementById('main-toolbar');
+      const hudActs = document.querySelector('.hud-actions');
+      const readout = document.querySelector('.bottom-readout');
+      const coords = document.getElementById('cursor-coords');
+      const vpEl = document.getElementById('viewport');
+      const vpRect = vpEl.getBoundingClientRect();
+      const readoutRect = readout.getBoundingClientRect();
+      const tbButtons = [...tb.querySelectorAll('button:not(.hidden), select')].map(el => {
+        const r = el.getBoundingClientRect();
+        return { id: el.id, left: r.left, right: r.right, width: r.width };
+      });
+      const hudButtons = [...hudActs.querySelectorAll('button')].map(el => {
+        const r = el.getBoundingClientRect();
+        return { id: el.id, left: r.left, right: r.right, width: r.width };
+      });
+
+      // Sample canvas along x = 12 (the ochre accent bar of the 2D drawing stamp) above readoutTop
+      const canvas = document.getElementById('cadCanvas');
+      const cctx = canvas.getContext('2d');
+      const dpr = canvas.width / canvas.clientWidth;
+      const readoutTopRel = Math.floor(readoutRect.top - vpRect.top);
+      let stampBarBottomY = -1;
+      for (let y = Math.max(0, readoutTopRel - 120); y < Math.min(canvas.clientHeight, readoutTopRel + 10); y++) {
+        const px = cctx.getImageData(Math.floor(11 * dpr), Math.floor(y * dpr), 1, 1).data;
+        // Sketch stamp ochre bar is #9e6b1b (158, 107, 27)
+        if (px[0] > 135 && px[0] < 180 && px[1] > 85 && px[1] < 130 && px[2] < 55) {
+          stampBarBottomY = y;
+        }
+      }
+
+      return {
+        tbOverflow: tb.scrollWidth - tb.clientWidth,
+        hudOverflow: hudActs.scrollWidth - hudActs.clientWidth,
+        tbClipped: tbButtons.filter(b => b.left < -0.5 || b.right > vw + 0.5 || b.width < 24),
+        hudClipped: hudButtons.filter(b => b.left < -0.5 || b.right > vw + 0.5 || b.width < 24),
+        coordsVisible: getComputedStyle(coords).display !== 'none' && readoutRect.width > 60,
+        stampClearancePx: stampBarBottomY > 0 ? (readoutTopRel - stampBarBottomY) : null
+      };
+    }, vp.width);
+
+    assert(metrics.tbOverflow <= 1, `Toolbar must not scroll horizontally at ${vp.width}x${vp.height} (overflow=${metrics.tbOverflow}).`);
+    assert(metrics.hudOverflow <= 1, `HUD actions must not scroll horizontally at ${vp.width}x${vp.height} (overflow=${metrics.hudOverflow}).`);
+    assert.deepEqual(metrics.tbClipped, [], `All toolbar controls must fit inside ${vp.width}x${vp.height}.`);
+    assert.deepEqual(metrics.hudClipped, [], `All HUD controls must fit inside ${vp.width}x${vp.height}.`);
+    assert(metrics.coordsVisible, `Coordinates badge must remain visible at ${vp.width}x${vp.height}.`);
+    assert(metrics.stampClearancePx !== null && metrics.stampClearancePx >= 12,
+      `2D Sketch scale block must stay at least 12px above bottom readout at ${vp.width}x${vp.height} (got ${metrics.stampClearancePx}px).`);
+  }
+});
+
 async function main() {
   const browserPath = process.env.SIMPLECAD_BROWSER_PATH;
   if (browserPath && !path.isAbsolute(browserPath)) throw new Error('SIMPLECAD_BROWSER_PATH must be absolute.');

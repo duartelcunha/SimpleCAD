@@ -15,7 +15,7 @@ An offline room planner for working out where your furniture fits before you mov
 
 ## Try it
 
-**Windows.** The [v1.0.0 release](https://github.com/duartelcunha/SimpleCAD/releases/tag/v1.0.0) provides an installer (`SimpleCAD-Setup.exe`) and a standalone executable (`SimpleCAD.exe`). Both use Microsoft Edge WebView2 and embed the offline web assets at build time. The screenshots and notes here follow the current `main` source, which includes fixes and visual updates made after `v1.0.0`.
+**Windows.** The [latest release](https://github.com/duartelcunha/SimpleCAD/releases/latest) ([v1.1.0](https://github.com/duartelcunha/SimpleCAD/releases/tag/v1.1.0)) provides a standalone portable executable (`SimpleCAD.exe`) with no installer required. It uses Microsoft Edge WebView2 and embeds the offline web assets at build time. Because the executable is not signed with a commercial Authenticode certificate, Windows SmartScreen may show a standard unrecognized-app prompt on first launch (*More info* → *Run anyway*).
 
 **Browser.** Download or clone this repository, then open `index.html`. The demo bedroom loads ready to edit, and the UI is in Portuguese. To serve it locally:
 
@@ -47,7 +47,7 @@ cargo build --manifest-path .\native\Cargo.toml --release --locked
 Copy-Item .\native\target\release\simplecad.exe .\SimpleCAD.exe -Force
 ```
 
-To make the installer, run `makensis .\native\installer.nsi` with NSIS available on your path. Rebuild the executable after changing embedded web assets.
+Rebuild the standalone executable after changing embedded web assets or icons.
 
 </details>
 
