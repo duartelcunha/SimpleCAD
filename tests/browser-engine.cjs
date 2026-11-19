@@ -546,12 +546,14 @@ test('responsive viewports (768x1024 and 390x844) avoid toolbar/HUD clipping and
 });
 
 test('mobile QR dialog generates SVG QR code and compressed #p= URL round-trips while rejecting corrupted #p=', async page => {
-  // First verify the full default 11-item Studio Bedroom generates a valid scannable QR code
+  // First verify the unmodified factory project produces the ultra-compact public URL QR code
   await page.locator('#btn-mobile-qr').click();
   assert(await page.locator('#qr-dialog').evaluate(el => el.open), 'QR dialog must open.');
-  await page.waitForFunction(() => document.querySelector('#qr-url-input').value.includes('#p='));
+  await page.waitForFunction(() => document.querySelector('#qr-url-input').value.startsWith('https://'));
+  const defaultUrl = await page.locator('#qr-url-input').inputValue();
+  assert(!defaultUrl.includes('127.0.0.1') && !defaultUrl.includes('localhost'), 'QR URL must never emit non-routable localhost for mobile scanners.');
   const defaultSvgPath = await page.locator('#qr-code-box svg path').getAttribute('d');
-  assert(defaultSvgPath && defaultSvgPath.length > 200, 'Full default 11-item room must fit in SVG QR code.');
+  assert(defaultSvgPath && defaultSvgPath.length > 200, 'Default room must render SVG QR code.');
   await page.locator('[data-close-dialog="qr-dialog"]').first().click();
 
   const custom = fixture([furniture({ name: 'Shared Mobile Desk', x: 315, y: 210 })]);

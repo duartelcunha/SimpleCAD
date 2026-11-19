@@ -2288,9 +2288,9 @@ dialog[open]:not([data-closing])::backdrop {
 }
 
 .qr-code-box {
-  width: 216px;
-  height: 216px;
-  padding: 12px;
+  width: 248px;
+  height: 248px;
+  padding: 6px;
   border-radius: 14px;
   background: #ffffff;
   border: 2px solid var(--ochre-brass);

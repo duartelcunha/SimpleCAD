@@ -1,12 +1,12 @@
 /* SimpleCAD Offline-First Service Worker (Zero external dependencies) */
-const CACHE_NAME = 'simplecad-offline-v37';
+const CACHE_NAME = 'simplecad-offline-v38';
 const STATIC_ASSETS = [
   './',
   './index.html',
-  './styles.css?v=37',
-  './default-room.js?v=37',
-  './project-data.js?v=37',
-  './app.js?v=37',
+  './styles.css?v=38',
+  './default-room.js?v=38',
+  './project-data.js?v=38',
+  './app.js?v=38',
   './icon.svg',
   './manifest.webmanifest'
 ];

@@ -616,15 +616,15 @@
     }
 
     const fmtBits = bchFormatBits(0b01, 0); // Level L (01), Mask 0
-    for (let i = 0; i <= 5; i++) setFunc(8, i, ((fmtBits >> i) & 1) === 1);
-    setFunc(8, 7, ((fmtBits >> 6) & 1) === 1);
+    for (let i = 0; i <= 5; i++) setFunc(i, 8, ((fmtBits >> i) & 1) === 1);
+    setFunc(7, 8, ((fmtBits >> 6) & 1) === 1);
     setFunc(8, 8, ((fmtBits >> 7) & 1) === 1);
-    setFunc(7, 8, ((fmtBits >> 8) & 1) === 1);
-    for (let i = 9; i < 15; i++) setFunc(14 - i, 8, ((fmtBits >> i) & 1) === 1);
+    setFunc(8, 7, ((fmtBits >> 8) & 1) === 1);
+    for (let i = 9; i < 15; i++) setFunc(8, 14 - i, ((fmtBits >> i) & 1) === 1);
     for (let i = 0; i < 8; i++) setFunc(8, size - 1 - i, ((fmtBits >> i) & 1) === 1);
     for (let i = 8; i < 15; i++) setFunc(size - 15 + i, 8, ((fmtBits >> i) & 1) === 1);
 
-    const pad = 2;
+    const pad = 4;
     const full = size + pad * 2;
     let d = '';
     for (let r = 0; r < size; r++) {
@@ -650,35 +650,64 @@
     return out;
   }
 
-  async function encodeProjectToUrlHash(snap) {
+  const WALL_ENUM = ['top', 'bottom', 'left', 'right'];
+  const COLOR_ENUM = ['zinc', 'amber', 'sky', 'emerald', 'violet', 'rose'];
+  const TYPE_ENUM = ['bed', 'nightstand', 'wardrobe', 'desk', 'chair', 'sofa', 'tv', 'pc', 'shelf', 'divider', 'easel', 'mirror', 'lamp', 'plant', 'appliance', 'rug', 'box'];
+
+  function isFactoryDefaultSnapshot(src) {
+    try {
+      const def = window.DEFAULT_PROJECT;
+      if (!def || !src || !src.room) return false;
+      if (src.room.w !== def.room.w || src.room.h !== def.room.h || src.activeLayoutId !== def.activeLayoutId) return false;
+      if ((src.items || []).length !== (def.catalog || []).length) return false;
+      const activeLay = def.layouts.find(l => l.id === def.activeLayoutId) || def.layouts[0];
+      const defItems = buildItemsFromLayout(def.catalog, activeLay);
+      for (let i = 0; i < defItems.length; i++) {
+        const a = src.items[i];
+        const b = defItems[i];
+        if (!a || a.id !== b.id || a.name !== b.name || a.w !== b.w || a.h !== b.h || a.zHeight !== b.zHeight) return false;
+        if (Math.abs(a.x - b.x) > 0.2 || Math.abs(a.y - b.y) > 0.2 || Math.abs((a.rot || 0) - (b.rot || 0)) > 0.2) return false;
+        if (a.visible !== b.visible || a.color !== b.color || Boolean(a.photoDataUrl)) return false;
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function encodeProjectToUrlHash(snap, allowEmptyForDefault = false) {
     const src = snap || snapshotProjectData();
+    if (allowEmptyForDefault && isFactoryDefaultSnapshot(src)) {
+      return '';
+    }
     const r = src.room || {};
+    const wIdx = (w) => { const idx = WALL_ENUM.indexOf(w); return idx >= 0 ? idx : 0; };
+    const cIdx = (c) => { const idx = COLOR_ENUM.indexOf(c); return idx >= 0 ? idx : 0; };
+    const tIdx = (t) => { const idx = TYPE_ENUM.indexOf(t); return idx >= 0 ? idx : 16; };
     const compact = [
-      'c1',
+      'c2',
       [
-        r.name || 'Quarto',
+        r.name === 'Studio Bedroom (440×380 cm)' ? '' : (r.name || 'Quarto'),
         Number(r.w) || 440,
         Number(r.h) || 380,
         Number(r.wallThickness ?? 14),
-        (r.doors || []).map(d => [d.id, d.name || 'Porta', d.wall, Number(d.offset) || 0, Number(d.width) || 90, d.hinge || 'left', d.swing || 'inward']),
-        (r.windows || []).map(w => [w.id, w.name || 'Janela', w.wall, Number(w.offset) || 0, Number(w.width) || 100]),
-        (r.outlets || []).map(o => [o.id, o.name || o.id, o.wall, Number(o.pos) || 0])
+        (r.doors || []).map(d => [d.id, d.name || 'Porta', wIdx(d.wall), Number(d.offset) || 0, Number(d.width) || 90, d.hinge === 'right' ? 1 : 0]),
+        (r.windows || []).map(w => [w.id, w.name || 'Janela', wIdx(w.wall), Number(w.offset) || 0, Number(w.width) || 100]),
+        (r.outlets || []).map(o => [o.id, o.name || o.id, wIdx(o.wall), Number(o.pos) || 0])
       ],
       (src.items || []).map(it => [
         it.id,
         it.name,
-        it.type || 'box',
+        tIdx(it.type),
         Number(it.w) || 60,
         Number(it.h) || 45,
         Number(it.zHeight) || 75,
-        Number(Number(it.x || 0).toFixed(1)),
-        Number(Number(it.y || 0).toFixed(1)),
-        Number(Number(it.rot || 0).toFixed(1)),
-        it.color || 'zinc',
-        it.ignoreCollision ? 1 : 0,
-        it.lockedDims ? 1 : 0,
-        it.visible === false ? 0 : 1,
-        it.type === 'divider' ? sanitizeFoldAngles(it.foldAngles) : null
+        Math.round(Number(it.x || 0) * 10) / 10,
+        Math.round(Number(it.y || 0) * 10) / 10,
+        Math.round(Number(it.rot || 0) * 10) / 10,
+        cIdx(it.color),
+        (it.ignoreCollision ? 1 : 0) | (it.lockedDims ? 2 : 0) | (it.visible === false ? 0 : 4),
+        ...(it.type === 'divider' ? [sanitizeFoldAngles(it.foldAngles)] : [])
       ]),
       (src.cables || []).map(c => [
         c.id,
@@ -687,11 +716,11 @@
         c.toId,
         Number(c.maxMeters) || 3,
         Number(c.warnMeters) || 2.5,
-        c.routingMode || 'direct',
+        c.routingMode === 'wall' ? 1 : 0,
         c.color || '#6e9887',
         c.visible === false ? 0 : 1
       ]),
-      [src.gridStep ?? 5, src.wallSnap !== false ? 1 : 0, src.style3d || 'solid', src.selectedId || null]
+      [src.gridStep ?? 5, src.wallSnap !== false ? 1 : 0, src.style3d === 'sketch' ? 1 : 0, src.selectedId || null]
     ];
     const rawBytes = new TextEncoder().encode(JSON.stringify(compact));
     if (typeof CompressionStream === 'function') {
@@ -708,27 +737,37 @@
   }
 
   function unpackCompactProject(arr) {
-    if (!Array.isArray(arr) || arr[0] !== 'c1' || !Array.isArray(arr[1]) || !Array.isArray(arr[2])) {
+    if (!Array.isArray(arr) || (arr[0] !== 'c1' && arr[0] !== 'c2') || !Array.isArray(arr[1]) || !Array.isArray(arr[2])) {
       return arr;
     }
+    const isV2 = arr[0] === 'c2';
     const [rTuple, iTuples, cTuples, meta] = [arr[1], arr[2], arr[3] || [], arr[4] || []];
-    const items = iTuples.map(t => ({
-      id: String(t[0]),
-      name: String(t[1]),
-      type: String(t[2] || 'box'),
-      w: Number(t[3]),
-      h: Number(t[4]),
-      zHeight: Number(t[5]),
-      x: Number(t[6]),
-      y: Number(t[7]),
-      rot: Number(t[8]),
-      color: String(t[9] || 'zinc'),
-      ignoreCollision: Boolean(t[10]),
-      lockedDims: Boolean(t[11]),
-      visible: t[12] !== 0,
-      ...(t[2] === 'divider' ? { foldAngles: sanitizeFoldAngles(t[13]) } : {}),
-      photoDataUrl: null
-    }));
+    const items = iTuples.map(t => {
+      const type = isV2 ? (TYPE_ENUM[t[2]] || 'box') : String(t[2] || 'box');
+      const color = isV2 ? (COLOR_ENUM[t[9]] || 'zinc') : String(t[9] || 'zinc');
+      const flags = Number(t[10] ?? 4);
+      const ignoreCollision = isV2 ? Boolean(flags & 1) : Boolean(t[10]);
+      const lockedDims = isV2 ? Boolean(flags & 2) : Boolean(t[11]);
+      const visible = isV2 ? Boolean(flags & 4) : (t[12] !== 0);
+      const foldRaw = isV2 ? t[11] : t[13];
+      return {
+        id: String(t[0]),
+        name: String(t[1]),
+        type,
+        w: Number(t[3]),
+        h: Number(t[4]),
+        zHeight: Number(t[5]),
+        x: Number(t[6]),
+        y: Number(t[7]),
+        rot: Number(t[8]),
+        color,
+        ignoreCollision,
+        lockedDims,
+        visible,
+        ...(type === 'divider' ? { foldAngles: sanitizeFoldAngles(foldRaw) } : {}),
+        photoDataUrl: null
+      };
+    });
     const placements = {};
     for (const it of items) {
       placements[it.id] = {
@@ -736,29 +775,36 @@
         ...(it.type === 'divider' ? { foldAngles: it.foldAngles } : {})
       };
     }
+    const wallFrom = (v) => isV2 ? (WALL_ENUM[v] || 'top') : String(v);
     return {
       version: 2,
       app: 'SimpleCAD',
       room: {
-        name: String(rTuple[0] || 'Quarto'),
+        name: String(rTuple[0] || 'Studio Bedroom (440×380 cm)'),
         w: Number(rTuple[1]),
         h: Number(rTuple[2]),
         wallThickness: Number(rTuple[3] ?? 14),
-        doors: (rTuple[4] || []).map(d => ({ id: String(d[0]), name: String(d[1]), wall: String(d[2]), offset: Number(d[3]), width: Number(d[4]), hinge: String(d[5] || 'left'), swing: String(d[6] || 'inward') })),
-        windows: (rTuple[5] || []).map(w => ({ id: String(w[0]), name: String(w[1]), wall: String(w[2]), offset: Number(w[3]), width: Number(w[4]) })),
-        outlets: (rTuple[6] || []).map(o => ({ id: String(o[0]), name: String(o[1]), wall: String(o[2]), pos: Number(o[3]) }))
+        doors: (rTuple[4] || []).map(d => ({
+          id: String(d[0]), name: String(d[1]), wall: wallFrom(d[2]),
+          offset: Number(d[3]), width: Number(d[4]),
+          hinge: isV2 ? (d[5] === 1 ? 'right' : 'left') : String(d[5] || 'left'),
+          swing: 'inward'
+        })),
+        windows: (rTuple[5] || []).map(w => ({ id: String(w[0]), name: String(w[1]), wall: wallFrom(w[2]), offset: Number(w[3]), width: Number(w[4]) })),
+        outlets: (rTuple[6] || []).map(o => ({ id: String(o[0]), name: String(o[1]), wall: wallFrom(o[2]), pos: Number(o[3]) }))
       },
       items,
       cables: cTuples.map(c => ({
         id: String(c[0]), name: String(c[1]), fromId: String(c[2]), toId: String(c[3]),
-        maxMeters: Number(c[4]), warnMeters: Number(c[5]), routingMode: String(c[6] || 'direct'),
+        maxMeters: Number(c[4]), warnMeters: Number(c[5]),
+        routingMode: isV2 ? (c[6] === 1 ? 'wall' : 'direct') : String(c[6] || 'direct'),
         color: String(c[7] || '#6e9887'), visible: c[8] !== 0
       })),
       layouts: [{ id: 'shared', name: 'Planta Partilhada', builtIn: false, placements }],
       activeLayoutId: 'shared',
       gridStep: Number(meta[0] ?? 5),
       wallSnap: meta[1] !== 0,
-      style3d: String(meta[2] || 'solid'),
+      style3d: isV2 ? (meta[2] === 1 ? 'sketch' : 'solid') : String(meta[2] || 'solid'),
       selectedId: meta[3] || (items[0]?.id ?? null)
     };
   }
@@ -890,21 +936,25 @@
     bCloud.setAttribute('aria-pressed', !isLanMode ? 'true' : 'false');
 
     let targetUrl = '';
-    if (isLanMode) {
-      if (liveSync.active && liveSync.lanUrls.length > 0) {
-        targetUrl = liveSync.lanUrls[0];
-        statusText.textContent = 'Ao Vivo · Sincronização automática PC ↔ Telemóvel';
-        helperText.textContent = 'Com o telemóvel ligado ao mesmo Wi-Fi deste PC, aponta a câmara ao QR Code. Tudo o que mudares ou fotografares no telemóvel aparece logo aqui no PC.';
-      } else {
-        const origin = window.location.origin.startsWith('http') ? `${window.location.origin}${window.location.pathname}` : PUBLIC_WEB_URL;
-        const hash = await encodeProjectToUrlHash();
-        targetUrl = `${origin}#p=${hash}`;
-        statusText.textContent = 'Pronto a abrir no telemóvel';
-        helperText.textContent = 'Aponta a câmara do telemóvel ao QR Code para abrir esta planta no telemóvel. (Abre o SimpleCAD.exe no PC para ativar a sincronização ao vivo em Wi-Fi).';
-      }
+    const routableLanUrl = (liveSync.active && Array.isArray(liveSync.lanUrls))
+      ? liveSync.lanUrls.find(u => !u.includes('127.0.0.1') && !u.includes('localhost'))
+      : null;
+
+    if (isLanMode && routableLanUrl) {
+      targetUrl = routableLanUrl;
+      statusText.textContent = 'Ao Vivo · Sincronização automática PC ↔ Telemóvel';
+      helperText.textContent = 'Com o telemóvel ligado ao mesmo Wi-Fi deste PC, aponta a câmara ao QR Code. Tudo o que mudares ou fotografares no telemóvel aparece logo aqui no PC.';
+    } else if (isLanMode) {
+      const host = window.location.hostname;
+      const isRoutableOrigin = window.location.origin.startsWith('http') && host !== '127.0.0.1' && host !== 'localhost';
+      const base = isRoutableOrigin ? `${window.location.origin}${window.location.pathname}` : PUBLIC_WEB_URL;
+      const hash = await encodeProjectToUrlHash(null, true);
+      targetUrl = hash ? `${base}#p=${hash}` : base;
+      statusText.textContent = 'Pronto a abrir no telemóvel (Link Online)';
+      helperText.textContent = 'Aponta a câmara do telemóvel ao QR Code para abrir esta planta no telemóvel. (Para sincronização ao vivo em Wi-Fi, usa o SimpleCAD.exe no PC).';
     } else {
-      const hash = await encodeProjectToUrlHash();
-      targetUrl = `${PUBLIC_WEB_URL}#p=${hash}`;
+      const hash = await encodeProjectToUrlHash(null, true);
+      targetUrl = hash ? `${PUBLIC_WEB_URL}#p=${hash}` : PUBLIC_WEB_URL;
       statusText.textContent = 'Link Online 100% Gratuito (4G/5G · Sem Servidor)';
       helperText.textContent = 'Este QR Code contém a tua planta comprimida. Podes abri-lo em qualquer lugar (mesmo em 4G/5G fora de casa ou com o PC desligado) e instalar a app no telemóvel.';
     }
